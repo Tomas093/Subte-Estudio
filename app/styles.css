@@ -229,3 +229,40 @@ details.howto summary{cursor:pointer;font:800 1.15rem var(--sign-font)}
 .read th,.read td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
 .read th{background:var(--sunk);font-family:var(--sign-font)}
 .read h4{font:800 .98rem var(--sign-font);margin:1.2em 0 .35em;color:var(--ink)}
+
+/* corrección: qué faltó y qué está mal */
+.verdict .mal{list-style:none;padding:0;display:flex;flex-direction:column;gap:6px}
+.verdict .mal li{display:flex;flex-direction:column;padding-left:10px;border-left:3px solid var(--bad)}
+.verdict .mal .ok-t{color:var(--ok);font-weight:600}
+.verdict details.cubiertos{margin-top:8px;font-size:.92rem}
+.verdict details.cubiertos summary{cursor:pointer;font:700 .8rem var(--sign-font);color:var(--muted)}
+button.donde{background:none;border:0;padding:0;margin-top:8px;color:var(--la-ink);text-decoration:underline;text-underline-offset:3px;cursor:pointer;font:600 .86rem var(--sign-font);text-align:left;display:block}
+.weak .acts button.donde{margin-top:0;display:inline}
+.read .flash{animation:flash 2s ease-out}
+@keyframes flash{0%,40%{background:color-mix(in srgb,var(--sign) 45%,transparent)}100%{background:transparent}}
+@media (prefers-reduced-motion:reduce){.read .flash{animation:none;outline:3px solid var(--sign)}}
+/* resumen de la autoevaluación */
+.fin{margin-top:8px}
+.fin:empty{display:none}
+.fin h4{font:800 1rem var(--sign-font);margin:18px 0 6px}
+.fin-cnt .t2{color:var(--ok)}.fin-cnt .t1{color:var(--mid)}.fin-cnt .t0{color:var(--bad)}
+.fin-note{color:var(--muted);font-size:.92rem}
+.fin .perso{padding:14px 16px;border-radius:10px;background:var(--sunk);margin:10px 0}
+.fin .perso h4{margin-top:0}
+.fin .perso .diag{font-weight:600}
+.fin .perso ol{padding-left:1.2em;display:flex;flex-direction:column;gap:12px}
+.fin .perso li p{margin:0 0 4px}
+.fin .perso .lab{font:700 .78rem var(--sign-font);color:var(--muted);display:block}
+.fin .releer{padding-left:1.2em}
+.fin-q .q-n{align-self:start}
+.fin-q .det{margin:6px 0}
+.fin-q .det li{display:grid;padding:0;border:0;gap:10px}
+.fin-q .det .mal li{gap:0}
+.fin-q .det .mal li{display:flex}
+.fin-q .det ul.plain{padding-left:1.1em;margin:4px 0}
+.fin-q .det ul.plain li{display:list-item;font-size:.95rem}
+.fin-q .lab{font:700 .8rem var(--sign-font);display:block;margin-top:6px}
+.fin-q .mal{list-style:none;padding:0;margin:4px 0 8px;display:flex;flex-direction:column;gap:6px;font-size:.95rem}
+.fin-q .mal li{flex-direction:column;padding-left:10px;border-left:3px solid var(--bad)}
+.fin-q .mal .ok-t{color:var(--ok);font-weight:600}
+.repaso .temas{margin:4px 0;color:var(--muted);font-size:.92rem}

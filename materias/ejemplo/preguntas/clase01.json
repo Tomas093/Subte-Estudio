@@ -2,7 +2,15 @@
   {
     "pregunta": "Un paquete pasa por tres routers entre tu computadora y un servidor web. ¿Qué cabeceras lee cada router y por qué no necesita entender HTTP?",
     "referencia": "Cada router trabaja en la capa de red: lee la cabecera IP (dirección de destino) para decidir por dónde reenviar, y en cada salto se reemplaza la cabecera de enlace. No necesita entender HTTP porque, por encapsulamiento, los datos de la aplicación viajan dentro de las cabeceras de transporte y de red, y solo los extremos las abren.",
-    "claves": ["El router opera en la capa de red", "Lee la dirección IP de destino para reenviar", "La cabecera de enlace cambia en cada salto", "Los datos de la aplicación viajan encapsulados y solo los extremos los abren"],
-    "errores": ["Decir que el router lee los puertos o la conexión TCP para reenviar"]
+    "claves": [
+      "El router opera en la capa de red",
+      "Lee la dirección IP de destino para reenviar",
+      "La cabecera de enlace cambia en cada salto",
+      "Los datos de la aplicación viajan encapsulados y solo los extremos los abren"
+    ],
+    "errores": [
+      "Decir que el router lee los puertos o la conexión TCP para reenviar"
+    ],
+    "donde": "Encapsulamiento"
   }
 ]

@@ -16,6 +16,10 @@
   const firstPending = () => (M.clases.find(c => !done(c)) || M.clases[M.clases.length - 1]).n;
   const current = () => (S.open && byN(S.open) ? S.open : firstPending());
   const fileUrl = u => (/^https?:/.test(u) ? u : "/materias/" + M.slug + "/" + u);
+  const kq = k => { const [n, i] = k.slice(1).split("-").map(Number); const c = byN(n); return { c, i, q: c && (c.preguntas || [])[i] }; };
+  /* Títulos comparables: el campo "donde" de cada pregunta es el título de una sección del resumen. */
+  const norm = t => String(t || "").replace(/^#+\s*/, "").replace(/[*`_]/g, "").replace(/\s+/g, " ").trim().replace(/[.:]$/, "").toLowerCase();
+  const dondeLink = (q, n) => q && q.donde ? `<button class="donde" data-donde="${esc(q.donde)}" data-donde-c="${n}">Dónde se explica: ${esc(q.donde)}</button>` : "";
 
   /* ---------- color de cada línea ---------- */
   function luminance(hex) {
@@ -115,6 +119,7 @@
         <h3 class="sec">Autoevaluación · ${plural((c.preguntas || []).length, "pregunta")}</h3>
         <p class="qintro" id="qintro">${introText()}</p>
         ${qs}
+        <div class="fin" id="fin-${c.n}" aria-live="polite"></div>
         <div class="nav-st">${c.n > M.clases[0].n ? `<button data-open="${c.n - 1}">Estación anterior · Clase ${c.n - 1}</button>` : "<span></span>"}${byN(c.n + 1) ? `<button data-open="${c.n + 1}">Próxima estación · Clase ${c.n + 1}</button>` : `<button data-view-go="terminal">Ir a la Terminal</button>`}</div>
       </article>
       <aside class="panel rail" aria-label="Pasos de la estación">
@@ -132,7 +137,7 @@
         ${c.apunte ? `<a class="pdf" href="${esc(fileUrl(c.apunte))}" target="_blank" rel="noopener">Apunte completo de la clase (PDF)</a>` : ""}
       </aside>
     </div>`;
-    refreshChecks(); refreshQuestions(c);
+    refreshChecks(); refreshQuestions(c); finRender(c);
   }
   function question(c, q, i) {
     const k = "h" + c.n + "-" + i, draft = S["a-" + k] || "";
@@ -146,7 +151,7 @@
         <button class="btn ghost" data-dunno="${k}">No la sé</button>
         <span class="words" id="w-${k}"></span></div>
       <div id="out-${k}"></div>
-      <div class="ref" id="ref-${k}" hidden><b>Respuesta de referencia</b>${esc(q.referencia)}</div>
+      <div class="ref" id="ref-${k}" hidden><b>Respuesta de referencia</b>${esc(q.referencia)}${dondeLink(q, c.n)}</div>
       <div class="rate" role="group" aria-label="¿Cómo te fue?">¿Cómo te fue?<button data-rate="${k}" data-v="0" aria-pressed="false">No la sabía</button><button data-rate="${k}" data-v="1" aria-pressed="false">A medias</button><button data-rate="${k}" data-v="2" aria-pressed="false">Bien</button></div>
     </div></div>`;
   }
@@ -176,15 +181,80 @@
       if (!r.ok) throw new Error(g.error || "No se pudo corregir.");
       S["g-" + k] = g; S["r-" + k] = g.veredicto; save(); renderVerdict(k, g);
       document.querySelectorAll(`[data-rate="${k}"]`).forEach(b => b.setAttribute("aria-pressed", String(g.veredicto === +b.dataset.v)));
-      weakCount();
+      weakCount(); finRender(byN(cn));
     } catch (e) { out.innerHTML = `<p class="thinking">${esc(e.message)}</p>`; }
     finally { btn.disabled = false; }
   }
+  const errList = g => (g.errores || []).map(e => (typeof e === "string" ? { dijiste: e, correcto: "" } : e));
+  const faltaTxt = c => c.falta || c.comentario || c.texto;
+  /* "Te faltó" y "Está mal" de una corrección; se usa en la corrección y en el resumen final. */
+  function fallas(g) {
+    const faltan = (g.claves || []).filter(x => x.estado !== "presente"), errs = errList(g);
+    return (faltan.length ? `<span class="lab">Te faltó</span><ul class="claves">${faltan.map(x => `<li class="${x.estado}"><span class="mk">${x.estado === "parcial" ? "a medias" : "falta"}</span><span>${esc(faltaTxt(x))}</span></li>`).join("")}</ul>` : "")
+      + (errs.length ? `<span class="lab">Está mal</span><ul class="mal">${errs.map(e => `<li><span>Dijiste: ${esc(e.dijiste)}</span>${e.correcto ? `<span class="ok-t">Es así: ${esc(e.correcto)}</span>` : ""}</li>`).join("")}</ul>` : "");
+  }
   function renderVerdict(k, g) {
     const out = $("out-" + k); if (!out) return;
-    const T = ["Mal, repasala", "A medias", "Bien"], L = { presente: "está", parcial: "a medias", ausente: "falta" };
-    const claves = (g.claves || []).map(c => `<li class="${c.estado}"><span class="mk">${L[c.estado] || c.estado}</span><span>${esc(c.texto)}${c.comentario ? `<small>${esc(c.comentario)}</small>` : ""}</span></li>`).join("");
-    out.innerHTML = `<div class="verdict v${g.veredicto}"><h4>${T[g.veredicto]} · ${g.puntaje}/10</h4><p>${esc(g.devolucion)}</p>${claves ? `<span class="lab">Puntos clave</span><ul class="claves">${claves}</ul>` : ""}${(g.errores || []).length ? `<span class="lab">Errores</span><ul>${g.errores.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}</div>`;
+    const { c, q } = kq(k), T = ["Mal, repasala", "A medias", "Bien"];
+    const cl = g.claves || [], faltan = cl.filter(x => x.estado !== "presente"), ok = cl.filter(x => x.estado === "presente"), errs = errList(g);
+    let h = `<div class="verdict v${g.veredicto}"><h4>${T[g.veredicto]} · ${g.puntaje}/10</h4>` + fallas(g);
+    if (!faltan.length && !errs.length) h += `<p>Cubriste todos los puntos clave, sin errores.</p>`;
+    if (ok.length && (faltan.length || errs.length)) h += `<details class="cubiertos"><summary>Lo que sí cubriste (${ok.length})</summary><ul>${ok.map(x => `<li>${esc(x.texto)}</li>`).join("")}</ul></details>`;
+    if (g.veredicto < 2) h += dondeLink(q, c && c.n);
+    out.innerHTML = h + "</div>";
+  }
+
+  /* ---------- resumen de la autoevaluación ---------- */
+  const ARMANDO = new Set();
+  function rated(c) { return (c.preguntas || []).map((q, i) => ({ q, i, k: "h" + c.n + "-" + i, v: S["r-h" + c.n + "-" + i] })).filter(x => x.v === 0 || x.v === 1 || x.v === 2); }
+  const firma = w => JSON.stringify(w.map(x => [x.i, x.v, (S["g-" + x.k] || {}).puntaje]));
+  function finRender(c) {
+    const box = $("fin-" + c.n); if (!box) return;
+    const total = (c.preguntas || []).length, r = rated(c), weak = r.filter(x => x.v < 2), done = r.length === total;
+    if (!r.length) { box.innerHTML = ""; return; }
+    const cnt = v => r.filter(x => x.v === v).length, F = S["fin-" + c.n], fr = firma(weak);
+    let h = `<h3 class="sec">Resumen de tu autoevaluación</h3><p class="fin-cnt">Respondiste ${r.length} de ${total}: <b class="t2">${cnt(2)} bien</b> · <b class="t1">${cnt(1)} a medias</b> · <b class="t0">${cnt(0)} mal o no la sabías</b>.</p>`;
+    if (!done) h += `<p class="fin-note">Cuando califiques las ${total} preguntas se arma solo el resumen de tus errores. Una pregunta cuenta cuando la corregís, la calificás con "¿Cómo te fue?" o marcás "No la sé".</p>`;
+    if (!weak.length) { box.innerHTML = h + (done ? `<p>No tenés preguntas mal ni a medias en esta clase.</p>` : ""); return; }
+    // Resumen personalizado (lo arma el modelo)
+    if (F && F.data) {
+      h += `<div class="perso"><h4>Qué tenés que reforzar</h4>${F.data.diagnostico ? `<p class="diag">${esc(F.data.diagnostico)}</p>` : ""}<ol>${(F.data.reforzar || []).map(x => `<li><b>${esc(x.tema)}</b><span class="lab">Qué fallaste</span><p>${esc(x.que_fallo)}</p><span class="lab">Cómo es</span><p>${esc(x.como_es)}</p><span class="lab">Para fijarlo</span><p>${esc(x.practica)}</p></li>`).join("")}</ol>`;
+      if (F.firma !== fr) h += `<p class="fin-note">Tus respuestas cambiaron desde que se armó este resumen.</p>`;
+      h += ST.corrector ? `<button class="btn" data-fin="${c.n}">${F.firma !== fr ? "Rehacer con las respuestas nuevas" : "Rehacer el resumen"}</button>` : "";
+      h += `</div>`;
+    } else if (ARMANDO.has(c.n)) h += `<p class="thinking">Armando el resumen de tus errores…</p>`;
+    else if (F && F.error) h += `<p class="thinking">${esc(F.error)}</p>${ST.corrector ? `<button class="btn" data-fin="${c.n}">Probar de nuevo</button>` : ""}`;
+    else if (ST.corrector) h += `<button class="btn primary" data-fin="${c.n}">Armar el resumen de mis errores</button>`;
+    // Lo que sale directo de las correcciones, sin modelo
+    const secs = [...new Set(weak.map(x => x.q.donde).filter(Boolean))];
+    if (secs.length) h += `<h4>Releé estas secciones del resumen</h4><ul class="releer">${secs.map(t => `<li><button class="donde" data-donde="${esc(t)}" data-donde-c="${c.n}">${esc(t)}</button></li>`).join("")}</ul>`;
+    h += `<h4>Pregunta por pregunta</h4><ul class="weak fin-q">${weak.map(x => {
+      const g = S["g-" + x.k];
+      const det = g ? fallas(g) : `<span class="lab">Sin corrección. Lo que tenía que decir la respuesta</span><ul class="plain">${(x.q.claves || []).map(y => `<li>${esc(y)}</li>`).join("")}</ul>`;
+      return `<li><span class="q-n">${x.i + 1}</span><div><span class="tag t${x.v}">${x.v === 1 ? "A medias" : g ? "Mal" : "No la sabías"}</span><b>${esc(x.q.pregunta)}</b><div class="det">${det}</div><div class="acts"><button data-goq="${x.k}">Responder de nuevo</button>${dondeLink(x.q, c.n)}</div></div></li>`;
+    }).join("")}</ul>`;
+    box.innerHTML = h;
+    if (done && ST.corrector && !F && !ARMANDO.has(c.n)) armarFin(c);
+  }
+  async function armarFin(c) {
+    if (ARMANDO.has(c.n)) return;
+    const weak = rated(c).filter(x => x.v < 2);
+    const items = weak.map(x => { const g = S["g-" + x.k]; return { i: x.i, veredicto: x.v, faltas: g ? (g.claves || []).filter(y => y.estado !== "presente").map(faltaTxt) : [], errores: g ? errList(g).map(y => y.dijiste + (y.correcto ? " (lo correcto: " + y.correcto + ")" : "")) : [] }; });
+    ARMANDO.add(c.n); finRender(c);
+    try {
+      const r = await fetch("/api/repaso", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ materia: M.slug, clase: c.n, items }) });
+      const d = await r.json(); if (!r.ok) throw new Error(d.error || "No se pudo armar el resumen.");
+      S["fin-" + c.n] = { firma: firma(weak), data: d };
+    } catch (e) { S["fin-" + c.n] = { error: e.message }; }
+    finally { ARMANDO.delete(c.n); save(); finRender(c); }
+  }
+  function irDonde(n, titulo) {
+    if (+current() !== +n || $("view-ruta").hidden) open(n);
+    const hs = [...document.querySelectorAll("#view-ruta .read h2,#view-ruta .read h3,#view-ruta .read h4,#view-ruta .read h5")];
+    const t = hs.find(h => norm(h.textContent) === norm(titulo)) || hs.find(h => norm(h.textContent).includes(norm(titulo)));
+    const el = t || document.querySelector("#view-ruta .read"); if (!el) return;
+    el.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+    if (t) { t.classList.remove("flash"); void t.offsetWidth; t.classList.add("flash"); }
   }
 
   /* ---------- dictado ---------- */
@@ -236,16 +306,25 @@
   function weakCount() { const n = weakList().length; $("weakCount").textContent = n ? `· ${n}` : ""; }
   function repaso() {
     const w = weakList();
-    $("view-repaso").innerHTML = `<h2>Para repasar</h2><p class="lead">Las preguntas que marcaste o que el corrector puso como "No la sabía" o "A medias". Volvé a escuchar el audio de esa clase y respondelas de nuevo al otro día.</p>` +
-      (w.length ? `<ul class="weak">${w.map(x => `<li>${roundel(x.c)}<div><span class="tag t${x.v}">${x.v === 0 ? "No la sabías" : "A medias"} · Clase ${x.c.n}</span><b>${esc(x.q.pregunta)}</b><div class="acts"><button data-goq="h${x.c.n}-${x.i}">Responder de nuevo</button>${x.c.audio ? `<a href="${esc(x.c.audio.url)}" target="_blank" rel="noopener">Escuchar el audio</a>` : ""}</div></div></li>`).join("")}</ul>`
+    const fins = M.clases.filter(c => S["fin-" + c.n] && S["fin-" + c.n].data);
+    $("view-repaso").innerHTML = `<h2>Para repasar</h2>` +
+      (fins.length ? `<h3 class="sec">Resúmenes de tus errores</h3><ul class="weak">${fins.map(c => { const d = S["fin-" + c.n].data; return `<li>${roundel(c)}<div><span class="tag">Clase ${c.n} · ${esc(c.titulo)}</span><b>${esc(d.diagnostico)}</b><p class="temas">Reforzar: ${esc((d.reforzar || []).map(x => x.tema).join(" · "))}</p><div class="acts"><button data-gofin="${c.n}">Leer el resumen completo</button></div></div></li>`; }).join("")}</ul><h3 class="sec">Preguntas</h3>` : "") +
+      `<p class="lead">Las preguntas que marcaste o que el corrector puso como "No la sabía" o "A medias". Releé la sección donde se explica, volvé a escuchar el audio de esa clase y respondelas de nuevo al otro día.</p>` +
+      (w.length ? `<ul class="weak">${w.map(x => `<li>${roundel(x.c)}<div><span class="tag t${x.v}">${x.v === 0 ? "No la sabías" : "A medias"} · Clase ${x.c.n}</span><b>${esc(x.q.pregunta)}</b><div class="acts"><button data-goq="h${x.c.n}-${x.i}">Responder de nuevo</button>${dondeLink(x.q, x.c.n)}${x.c.audio ? `<a href="${esc(x.c.audio.url)}" target="_blank" rel="noopener">Escuchar el audio</a>` : ""}</div></div></li>`).join("")}</ul>`
         : `<p class="empty">Todavía no hay preguntas para repasar. Respondé la autoevaluación de una estación y calificá cada respuesta.</p>`);
+  }
+
+  async function ayuda() {
+    const v = $("view-ayuda"); if (v.dataset.ok) return;
+    try { const r = await fetch("/app/ayuda.md"); if (!r.ok) throw 0; v.innerHTML = `<div class="read">${md(await r.text())}</div>`; v.dataset.ok = 1; }
+    catch (e) { v.innerHTML = `<p class="empty">No se pudo cargar la guía.</p>`; }
   }
 
   /* ---------- navegación ---------- */
   function show(view) {
     document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.view === view)));
-    for (const v of ["ruta", "horario", "terminal", "repaso"]) $("view-" + v).hidden = v !== view;
-    if (view === "horario") horario(); if (view === "terminal") terminal(); if (view === "repaso") repaso();
+    for (const v of ["ruta", "horario", "terminal", "repaso", "ayuda"]) $("view-" + v).hidden = v !== view;
+    if (view === "horario") horario(); if (view === "terminal") terminal(); if (view === "repaso") repaso(); if (view === "ayuda") ayuda();
     S.view = view; save();
   }
   function open(n, to) {
@@ -258,14 +337,17 @@
     if (t.dataset.open) return open(t.dataset.open);
     if (t.dataset.viewGo) { show(t.dataset.viewGo); document.querySelector(".tabs").scrollIntoView({ block: "start" }); return; }
     if (t.dataset.ref) { const r = $("ref-" + t.dataset.ref); r.hidden = !r.hidden; t.setAttribute("aria-expanded", String(!r.hidden)); t.textContent = r.hidden ? "Ver respuesta de referencia" : "Ocultar respuesta de referencia"; return; }
-    if (t.dataset.rate) { const k = "r-" + t.dataset.rate, v = +t.dataset.v; S[k] = S[k] === v ? undefined : v; save(); document.querySelectorAll(`[data-rate="${t.dataset.rate}"]`).forEach(b => b.setAttribute("aria-pressed", String(S[k] === +b.dataset.v))); weakCount(); return; }
+    if (t.dataset.rate) { const k = "r-" + t.dataset.rate, v = +t.dataset.v; S[k] = S[k] === v ? undefined : v; save(); document.querySelectorAll(`[data-rate="${t.dataset.rate}"]`).forEach(b => b.setAttribute("aria-pressed", String(S[k] === +b.dataset.v))); weakCount(); finRender(kq(t.dataset.rate).c); return; }
     if (t.dataset.grade) return grade(t.dataset.grade, t);
     if (t.dataset.rec) return toggleRec(t.dataset.rec, t);
     if (t.dataset.dunno) {
       const k = t.dataset.dunno; S["r-" + k] = 0; S["u-" + k] = 1; save(); $("ref-" + k).hidden = false;
       const rb = document.querySelector(`[data-ref="${k}"]`); if (rb) { rb.disabled = false; rb.setAttribute("aria-expanded", "true"); rb.textContent = "Ocultar respuesta de referencia"; }
-      document.querySelectorAll(`[data-rate="${k}"]`).forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.v === 0))); weakCount(); return;
+      document.querySelectorAll(`[data-rate="${k}"]`).forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.v === 0))); weakCount(); finRender(kq(k).c); return;
     }
+    if (t.dataset.donde) return irDonde(t.dataset.dondeC, t.dataset.donde);
+    if (t.dataset.fin) return armarFin(byN(t.dataset.fin));
+    if (t.dataset.gofin) return open(t.dataset.gofin, "fin-" + t.dataset.gofin);
     if (t.dataset.goq) { const n = +t.dataset.goq.slice(1).split("-")[0]; return open(n, "q-" + t.dataset.goq); }
   });
   document.addEventListener("keydown", e => { if ((e.key === "Enter" || e.key === " ") && e.target.matches(".st")) { e.preventDefault(); e.target.dispatchEvent(new MouseEvent("click", { bubbles: true })); } });
