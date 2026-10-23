@@ -18,9 +18,9 @@ El contenido de cada materia (resúmenes, preguntas, plan) lo arman agentes de C
 - **Dictado:** grabás tu respuesta con el micrófono y [whisper.cpp](https://github.com/ggml-org/whisper.cpp) la transcribe en tu compu.
 - **Horario:** plan por días hasta el examen.
 - **Terminal:** material general, examen modelo y la guía de cómo responder.
-- **Para repasar:** junta las preguntas que no sabías o sabías a medias.
+- **Para repasar (repaso espaciado):** cada pregunta mal o a medias vuelve en 1 hora, después al día siguiente, a los 3 días y a la semana. Si fallás, vuelve a empezar.
 
-El progreso y tus respuestas se guardan en el navegador.
+El progreso y tus respuestas se guardan solos en `progreso/<materia>.json` (fuera de git), con una copia por día en `progreso/copias/`.
 
 ## Requisitos
 
@@ -50,6 +50,7 @@ Abrí `http://127.0.0.1:8765`. Si tenés varias materias, elegís cuál en el se
 | `GEMINI_API_KEY`, `GEMINI_MODELO` | Solo si usás Gemini; se cobra por uso según la tarifa de Google |
 | `WHISPER_MODELO` | Ruta al modelo ggml de whisper.cpp |
 | `WHISPER_IDIOMA` | Idioma del dictado, por defecto `es` |
+| `SUBTE_DATOS` | Carpeta del progreso, por defecto `progreso/`. Poné una de iCloud o Dropbox para usarlo en varias compus |
 | `PUERTO` | Puerto del servidor, por defecto 8765 |
 
 ## Armar una materia nueva con agentes

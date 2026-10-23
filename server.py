@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -47,6 +48,7 @@ CFG = {
     "whisper_modelo": os.path.expanduser(os.environ.get("WHISPER_MODELO", "")),
     "whisper_idioma": os.environ.get("WHISPER_IDIOMA", "es"),
     "puerto": int(os.environ.get("PUERTO", "8765")),
+    "datos": Path(os.path.expanduser(os.environ.get("SUBTE_DATOS", ""))) if os.environ.get("SUBTE_DATOS") else ROOT / "progreso",
 }
 
 # ---------------------------------------------------------------- materias
@@ -98,6 +100,33 @@ def pregunta(slug, n, i):
         return m, None
     clase = next((c for c in m.get("clases", []) if int(c["n"]) == int(n)), {})
     return m, dict(qs[i], clase=clase)
+
+# ---------------------------------------------------------------- progreso
+# Un archivo JSON por materia en progreso/ (o SUBTE_DATOS), más una copia por día en progreso/copias/.
+
+COPIAS = 14
+
+
+def leer_progreso(slug):
+    f = CFG["datos"] / f"{slug}.json"
+    return json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
+
+
+def guardar_progreso(slug, datos):
+    if not isinstance(datos, dict):
+        raise ValueError("el progreso tiene que ser un objeto")
+    CFG["datos"].mkdir(parents=True, exist_ok=True)
+    f = CFG["datos"] / f"{slug}.json"
+    tmp = f.with_suffix(".tmp")
+    tmp.write_text(json.dumps(datos, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, f)
+    copias = CFG["datos"] / "copias"
+    copias.mkdir(exist_ok=True)
+    hoy = copias / f"{slug}-{time.strftime('%Y-%m-%d')}.json"
+    if not hoy.exists():
+        shutil.copyfile(f, hoy)
+        for viejo in sorted(copias.glob(f"{slug}-????-??-??.json"))[:-COPIAS]:
+            viejo.unlink()
 
 # ---------------------------------------------------------------- corrección
 
@@ -375,6 +404,12 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             data = cargar_materia(m.group(1))
             return self.enviar(200, data) if data else self.enviar(404, {"error": "Materia no encontrada"})
+        m = re.match(r"^/api/progreso/([a-z0-9-]+)$", p)
+        if m and materia_dir(m.group(1)):
+            try:
+                return self.enviar(200, {"datos": leer_progreso(m.group(1))})
+            except (OSError, ValueError) as e:
+                return self.enviar(500, {"error": f"No se pudo leer el progreso ({e})"})
         m = re.match(r"^/materias/([a-z0-9-]+)/(fuentes/[^/]+)$", urllib.parse.unquote(p))
         if m and materia_dir(m.group(1)):
             return self.archivo(MATERIAS / m.group(1) / m.group(2))
@@ -394,6 +429,13 @@ class Handler(BaseHTTPRequestHandler):
                     return self.enviar(400, {"error": "Escribí una respuesta un poco más completa antes de corregirla."})
                 code, out = corregir(str(d.get("materia")), int(d.get("clase")), int(d.get("i")), resp[:6000], d.get("proveedor"))
                 return self.enviar(code, out)
+            m = re.match(r"^/api/progreso/([a-z0-9-]+)$", p)
+            if m and materia_dir(m.group(1)):
+                try:
+                    guardar_progreso(m.group(1), json.loads(cuerpo or b"{}"))
+                except OSError as e:
+                    return self.enviar(500, {"error": f"No se pudo guardar el progreso ({e})"})
+                return self.enviar(200, {"ok": True})
             if p == "/api/repaso":
                 d = json.loads(cuerpo or b"{}")
                 code, out = repaso(str(d.get("materia")), int(d.get("clase")), list(d.get("items") or []), d.get("proveedor"))
@@ -412,6 +454,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     srv = ThreadingHTTPServer(("127.0.0.1", CFG["puerto"]), Handler)
+    print(f"Progreso guardado en {CFG['datos']}")
     print(f"Subte Estudio en http://127.0.0.1:{CFG['puerto']}  (corrector: {CFG['proveedor']} · {CFG['modelo'] if CFG['proveedor'] != 'gemini' else CFG['gemini_modelo']})")
     try:
         srv.serve_forever()

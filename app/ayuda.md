@@ -52,15 +52,25 @@ Debajo de la última pregunta aparece **Resumen de tu autoevaluación**:
 
 Se arma solo cuando calificaste todas. Una pregunta cuenta como calificada cuando la corregís, tocás uno de los botones de "¿Cómo te fue?" o tocás "No la sé". Si después mejorás respuestas, tocá **Rehacer** para actualizarlo.
 
-### Para repasar
+### Para repasar (repaso espaciado)
 
-La pestaña **Para repasar** junta, de todas las clases, los resúmenes de errores y las preguntas que te salieron mal o a medias. La rutina que funciona:
+Cada pregunta que te sale mal o a medias vuelve sola para que la respondas de nuevo:
 
-1. Al otro día, abrí "Para repasar".
-2. Leé el resumen de errores de la clase.
-3. Tocá "Dónde se explica" y releé esa sección.
-4. Tocá "Responder de nuevo" y respondé sin mirar.
-5. Cuando una te sale "Bien", sale sola de la lista.
+1. **1 hora** después.
+2. Si te sale bien, vuelve al **día siguiente**.
+3. Si te sale bien de nuevo, a los **3 días**.
+4. Y después a la **semana**. Si ahí también te sale bien, queda aprendida.
+
+Si te sale mal en cualquier vuelta, arranca de nuevo desde 1 hora. Responderla bien antes de que le toque no la adelanta: tiene que pasar el tiempo.
+
+Cómo usarlo:
+
+1. Mirá la pestaña **Para repasar**: el número al lado (y en la pestaña del navegador) es cuántas te tocan ahora.
+2. Tocá **Dónde se explica** y releé esa sección.
+3. Tocá **Responder ahora**: se borra tu respuesta vieja para que la escribas de cero, sin mirar.
+4. Corregila (o calificala con "¿Cómo te fue?"). Eso la reprograma sola.
+
+Ahí también están los resúmenes de errores de cada clase.
 
 ### Si una pregunta pide algo que nunca viste
 
@@ -76,4 +86,5 @@ El agente revisa todas las preguntas contra el resumen: si falta la explicación
 - **No aparece el botón Dictar**: falta configurar whisper (ver el README).
 - **La página no carga**: el servidor no está corriendo. Volvé a correr `python3 server.py`.
 - **Cambiaron las preguntas y no se ven**: recargá la página (Cmd+R o F5).
-- **Tu progreso** se guarda en este navegador. Si abrís otro navegador o modo incógnito, arrancás de cero.
+- **Tu progreso** se guarda solo, en la carpeta `progreso/` del proyecto, y en `progreso/copias/` queda una copia por día (las últimas 14). No hace falta guardar nada a mano. Para recuperar un día anterior: con el servidor apagado, copiá el archivo de ese día de `progreso/copias/` a `progreso/<materia>.json`, borrá los datos del sitio en el navegador y volvé a abrir.
+- **Usarlo en otra compu**: poné en `.env` la línea `SUBTE_DATOS=` con una carpeta de iCloud o Dropbox, y en las dos compus la misma.

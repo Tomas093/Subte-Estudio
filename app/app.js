@@ -45,8 +45,40 @@
   };
 
   /* ---------- estado guardado ---------- */
-  let saveT;
-  function save() { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { } }, 150); }
+  /* Se guarda en el navegador y en el disco (progreso/<materia>.json, vía el servidor).
+     Al arrancar gana la copia más nueva (S._t). */
+  let saveT, diskT, pendiente = false, FOOT = "";
+  const progresoUrl = () => "/api/progreso/" + M.slug;
+  function save() {
+    S._t = Date.now(); pendiente = true;
+    clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { } }, 150);
+    clearTimeout(diskT); diskT = setTimeout(saveDisk, 700);
+  }
+  async function saveDisk() {
+    pendiente = false;
+    try {
+      const r = await fetch(progresoUrl(), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(S) });
+      if (!r.ok) throw new Error((await r.json()).error);
+      $("foot").textContent = FOOT;
+    } catch (e) { $("foot").textContent = "No se pudo guardar tu progreso en el disco: revisá que el servidor esté corriendo. Mientras tanto queda en este navegador."; }
+  }
+  addEventListener("pagehide", () => { if (pendiente && M) navigator.sendBeacon(progresoUrl(), new Blob([JSON.stringify(S)], { type: "application/json" })); });
+
+  /* ---------- repaso espaciado ----------
+     Una pregunta mal o a medias vuelve en 1 hora. Cada vez que sale bien cuando le toca,
+     vuelve más tarde: 1 día, 3 días, 1 semana. Si sale bien en la última, queda aprendida.
+     Si sale mal en cualquier momento, vuelve a empezar desde 1 hora. */
+  const H = 36e5, INTERVALOS = [H, 24 * H, 72 * H, 168 * H];
+  function marcar(k, v) {
+    const sr = S["sr-" + k], now = Date.now();
+    if (v === 0 || v === 1) S["sr-" + k] = { paso: 0, vence: now + INTERVALOS[0] };
+    else if (v === 2 && sr && now >= sr.vence) {
+      const paso = sr.paso + 1;
+      if (paso >= INTERVALOS.length) { delete S["sr-" + k]; S["ok-" + k] = now; }
+      else S["sr-" + k] = { paso, vence: now + INTERVALOS[paso] };
+    }
+  }
+  const cuando = ms => { const m = Math.round(ms / 6e4); return m < 60 ? `en ${Math.max(1, m)} min` : m < 1440 ? `en ${Math.round(m / 60)} h` : `en ${Math.round(m / 1440)} ${Math.round(m / 1440) === 1 ? "día" : "días"}`; };
 
   /* ---------- diagrama ---------- */
   function diagram() {
@@ -179,7 +211,7 @@
       const r = await fetch("/api/corregir", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ materia: M.slug, clase: cn, i, respuesta: ans }) });
       const g = await r.json();
       if (!r.ok) throw new Error(g.error || "No se pudo corregir.");
-      S["g-" + k] = g; S["r-" + k] = g.veredicto; save(); renderVerdict(k, g);
+      S["g-" + k] = g; S["r-" + k] = g.veredicto; marcar(k, g.veredicto); save(); renderVerdict(k, g);
       document.querySelectorAll(`[data-rate="${k}"]`).forEach(b => b.setAttribute("aria-pressed", String(g.veredicto === +b.dataset.v)));
       weakCount(); finRender(byN(cn));
     } catch (e) { out.innerHTML = `<p class="thinking">${esc(e.message)}</p>`; }
@@ -302,16 +334,24 @@
     ${M.cuaderno ? `<li><span class="k">Cuaderno completo</span><div><a href="${esc(M.cuaderno)}" target="_blank" rel="noopener">Abrir NotebookLM</a><p>Para hacerle preguntas al material.</p></div></li>` : ""}</ul>
     ${M.como_responder_md ? `<details class="howto" open><summary>Cómo responder el examen</summary><div class="read">${md(M.como_responder_md)}</div></details>` : ""}`;
   }
-  const weakList = () => { const w = []; for (const c of M.clases) (c.preguntas || []).forEach((q, i) => { const v = S["r-h" + c.n + "-" + i]; if (v === 0 || v === 1) w.push({ c, q, i, v }); }); return w; };
-  function weakCount() { const n = weakList().length; $("weakCount").textContent = n ? `· ${n}` : ""; }
+  const srList = () => { const w = []; for (const c of M.clases) (c.preguntas || []).forEach((q, i) => { const k = "h" + c.n + "-" + i, sr = S["sr-" + k]; if (sr) w.push({ c, q, i, k, sr, v: S["r-" + k] }); }); return w.sort((a, b) => a.sr.vence - b.sr.vence); };
+  function weakCount() {
+    const n = srList().filter(x => x.sr.vence <= Date.now()).length;
+    $("weakCount").textContent = n ? `· ${n}` : "";
+    if (M) document.title = (n ? `(${n}) ` : "") + M.titulo + " · Subte Estudio";
+  }
   function repaso() {
-    const w = weakList();
+    const now = Date.now(), w = srList(), ya = w.filter(x => x.sr.vence <= now), luego = w.filter(x => x.sr.vence > now);
     const fins = M.clases.filter(c => S["fin-" + c.n] && S["fin-" + c.n].data);
-    $("view-repaso").innerHTML = `<h2>Para repasar</h2>` +
-      (fins.length ? `<h3 class="sec">Resúmenes de tus errores</h3><ul class="weak">${fins.map(c => { const d = S["fin-" + c.n].data; return `<li>${roundel(c)}<div><span class="tag">Clase ${c.n} · ${esc(c.titulo)}</span><b>${esc(d.diagnostico)}</b><p class="temas">Reforzar: ${esc((d.reforzar || []).map(x => x.tema).join(" · "))}</p><div class="acts"><button data-gofin="${c.n}">Leer el resumen completo</button></div></div></li>`; }).join("")}</ul><h3 class="sec">Preguntas</h3>` : "") +
-      `<p class="lead">Las preguntas que marcaste o que el corrector puso como "No la sabía" o "A medias". Releé la sección donde se explica, volvé a escuchar el audio de esa clase y respondelas de nuevo al otro día.</p>` +
-      (w.length ? `<ul class="weak">${w.map(x => `<li>${roundel(x.c)}<div><span class="tag t${x.v}">${x.v === 0 ? "No la sabías" : "A medias"} · Clase ${x.c.n}</span><b>${esc(x.q.pregunta)}</b><div class="acts"><button data-goq="h${x.c.n}-${x.i}">Responder de nuevo</button>${dondeLink(x.q, x.c.n)}${x.c.audio ? `<a href="${esc(x.c.audio.url)}" target="_blank" rel="noopener">Escuchar el audio</a>` : ""}</div></div></li>`).join("")}</ul>`
-        : `<p class="empty">Todavía no hay preguntas para repasar. Respondé la autoevaluación de una estación y calificá cada respuesta.</p>`);
+    const item = (x, ahora) => `<li>${roundel(x.c)}<div><span class="tag t${x.v === 1 ? 1 : 0}">Clase ${x.c.n} · repaso ${x.sr.paso + 1} de ${INTERVALOS.length}${ahora ? "" : " · " + cuando(x.sr.vence - now)}</span><b>${esc(x.q.pregunta)}</b><div class="acts">${ahora ? `<button data-goq="${x.k}" data-nuevo="1">Responder ahora</button>` : ""}${dondeLink(x.q, x.c.n)}${x.c.audio ? `<a href="${esc(x.c.audio.url)}" target="_blank" rel="noopener">Escuchar el audio</a>` : ""}</div></div></li>`;
+    const aprendidas = Object.keys(S).filter(k => k.startsWith("ok-")).length;
+    $("view-repaso").innerHTML = `<h2>Para repasar</h2>
+      <p class="lead">Cada pregunta que te sale mal o a medias vuelve <b>1 hora</b> después. Si cuando vuelve te sale bien, la próxima vez vuelve al <b>día siguiente</b>, después a los <b>3 días</b> y después a la <b>semana</b>. Si te sale bien las cuatro veces, queda aprendida. Si te sale mal en cualquiera, vuelve a empezar desde 1 hora.</p>
+      <h3 class="sec">Te toca ahora · ${ya.length}</h3>` +
+      (ya.length ? `<ul class="weak">${ya.map(x => item(x, true)).join("")}</ul>` : `<p class="empty">No tenés repasos pendientes ahora.${luego.length ? ` El próximo es ${cuando(luego[0].sr.vence - now)}.` : ""}</p>`) +
+      (luego.length ? `<h3 class="sec">Próximos repasos · ${luego.length}</h3><ul class="weak">${luego.map(x => item(x, false)).join("")}</ul>` : "") +
+      (aprendidas ? `<p class="lead">Preguntas aprendidas: ${aprendidas}.</p>` : "") +
+      (fins.length ? `<h3 class="sec">Resúmenes de tus errores</h3><ul class="weak">${fins.map(c => { const d = S["fin-" + c.n].data; return `<li>${roundel(c)}<div><span class="tag">Clase ${c.n} · ${esc(c.titulo)}</span><b>${esc(d.diagnostico)}</b><p class="temas">Reforzar: ${esc((d.reforzar || []).map(x => x.tema).join(" · "))}</p><div class="acts"><button data-gofin="${c.n}">Leer el resumen completo</button></div></div></li>`; }).join("")}</ul>` : "");
   }
 
   async function ayuda() {
@@ -337,17 +377,18 @@
     if (t.dataset.open) return open(t.dataset.open);
     if (t.dataset.viewGo) { show(t.dataset.viewGo); document.querySelector(".tabs").scrollIntoView({ block: "start" }); return; }
     if (t.dataset.ref) { const r = $("ref-" + t.dataset.ref); r.hidden = !r.hidden; t.setAttribute("aria-expanded", String(!r.hidden)); t.textContent = r.hidden ? "Ver respuesta de referencia" : "Ocultar respuesta de referencia"; return; }
-    if (t.dataset.rate) { const k = "r-" + t.dataset.rate, v = +t.dataset.v; S[k] = S[k] === v ? undefined : v; save(); document.querySelectorAll(`[data-rate="${t.dataset.rate}"]`).forEach(b => b.setAttribute("aria-pressed", String(S[k] === +b.dataset.v))); weakCount(); finRender(kq(t.dataset.rate).c); return; }
+    if (t.dataset.rate) { const k = "r-" + t.dataset.rate, v = +t.dataset.v; S[k] = S[k] === v ? undefined : v; if (S[k] === v) marcar(t.dataset.rate, v); save(); document.querySelectorAll(`[data-rate="${t.dataset.rate}"]`).forEach(b => b.setAttribute("aria-pressed", String(S[k] === +b.dataset.v))); weakCount(); finRender(kq(t.dataset.rate).c); return; }
     if (t.dataset.grade) return grade(t.dataset.grade, t);
     if (t.dataset.rec) return toggleRec(t.dataset.rec, t);
     if (t.dataset.dunno) {
-      const k = t.dataset.dunno; S["r-" + k] = 0; S["u-" + k] = 1; save(); $("ref-" + k).hidden = false;
+      const k = t.dataset.dunno; S["r-" + k] = 0; S["u-" + k] = 1; marcar(k, 0); save(); $("ref-" + k).hidden = false;
       const rb = document.querySelector(`[data-ref="${k}"]`); if (rb) { rb.disabled = false; rb.setAttribute("aria-expanded", "true"); rb.textContent = "Ocultar respuesta de referencia"; }
       document.querySelectorAll(`[data-rate="${k}"]`).forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.v === 0))); weakCount(); finRender(kq(k).c); return;
     }
     if (t.dataset.donde) return irDonde(t.dataset.dondeC, t.dataset.donde);
     if (t.dataset.fin) return armarFin(byN(t.dataset.fin));
     if (t.dataset.gofin) return open(t.dataset.gofin, "fin-" + t.dataset.gofin);
+    if (t.dataset.goq && t.dataset.nuevo) { const k = t.dataset.goq; delete S["a-" + k]; delete S["g-" + k]; delete S["u-" + k]; save(); }
     if (t.dataset.goq) { const n = +t.dataset.goq.slice(1).split("-")[0]; return open(n, "q-" + t.dataset.goq); }
   });
   document.addEventListener("keydown", e => { if ((e.key === "Enter" || e.key === " ") && e.target.matches(".st")) { e.preventDefault(); e.target.dispatchEvent(new MouseEvent("click", { bubbles: true })); } });
@@ -375,11 +416,18 @@
     if (lista.length > 1) { $("materiaSel").hidden = false; $("materiaSel").innerHTML = lista.map(m => `<option value="${m.slug}" ${m.slug === slug ? "selected" : ""}>${esc(m.titulo)}</option>`).join(""); }
     M = await fetch("/api/materia/" + slug).then(r => r.json());
     KEY = "subte-" + slug; try { S = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { S = {}; }
-    document.title = M.titulo + " · Subte Estudio";
+    const disco = await fetch("/api/progreso/" + slug).then(r => r.json()).then(d => d.datos).catch(() => null);
+    const subir = !disco && Object.keys(S).length > 0;
+    if (disco && (disco._t || 0) >= (S._t || 0)) S = disco;
+    // Preguntas mal o a medias de antes del repaso espaciado: tocan ahora.
+    for (const c of M.clases) (c.preguntas || []).forEach((q, i) => { const k = "h" + c.n + "-" + i; if ((S["r-" + k] === 0 || S["r-" + k] === 1) && !S["sr-" + k]) S["sr-" + k] = { paso: 0, vence: Date.now() }; });
+    if (subir || (S._t || 0) > ((disco && disco._t) || 0)) save();
     $("brandName").textContent = "Red de estudio · " + M.titulo; $("disc").textContent = (M.titulo.match(/\p{L}+/gu) || ["S"]).map(w => w[0]).join("").slice(0, 2).toUpperCase();
     $("tabTerminal").textContent = "Terminal: " + ((M.examen && M.examen.nombre) || "examen").toLowerCase();
-    $("foot").textContent = "Tu progreso y tus respuestas se guardan en este navegador." + (ST.corrector ? ` Corrector: ${ST.proveedor === "gemini" ? "Gemini" : "Ollama · " + ST.modelo}.` : " Corrector apagado: revisá Ollama o la configuración.");
+    FOOT = "Tu progreso se guarda solo en la carpeta progreso/ del proyecto, con una copia por día." + (ST.corrector ? ` Corrector: ${ST.proveedor === "gemini" ? "Gemini" : "Ollama · " + ST.modelo}.` : " Corrector apagado: revisá Ollama o la configuración.");
+    $("foot").textContent = FOOT;
     applyLines(); sign(); station(); diagram(); weakCount();
+    setInterval(() => { weakCount(); if (!$("view-repaso").hidden) repaso(); }, 6e4);
     if (S.view && S.view !== "ruta") show(S.view);
   }
   boot();
