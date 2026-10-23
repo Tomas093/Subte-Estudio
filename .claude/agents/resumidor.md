@@ -38,6 +38,7 @@ El resumen es la parte teórica del estudio: el video y el audio ya dieron los e
 - Nada de símbolos como ⇒, →, ≠ dentro de la prosa; escribí "implica", "no es lo mismo que". Se permiten en fórmulas reales (R + W > N, L = λ·W).
 - No inventes hechos, números ni ejemplos que no estén en las fuentes. Si las fuentes no explican algo, no lo expliques vos.
 - Largo: lo que haga falta para entender, típicamente 1200 a 2500 palabras por clase. Profundidad antes que cobertura de nombres sueltos.
+- Nada de secciones de "profundización", "ampliación" o "para saber más": todo lo que puede evaluarse va en una sección principal, explicado completo. Si el material compara dos conceptos (por ejemplo, propiedades de seguridad y de progreso), la comparación va explícita: qué es cada uno, en qué se diferencian y un ejemplo de cada uno.
 - Sin emojis, sin "¡", sin frases de relleno ("es importante destacar que").
 
 ## Al terminar

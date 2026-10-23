@@ -106,12 +106,19 @@ ESQUEMA = {
     "properties": {
         "claves": {"type": "array", "items": {"type": "object", "properties": {
             "n": {"type": "integer"}, "estado": {"type": "string", "enum": ["presente", "parcial", "ausente"]},
-            "comentario": {"type": "string"}}, "required": ["n", "estado"]}},
-        "errores": {"type": "array", "items": {"type": "string"}},
-        "devolucion": {"type": "string"},
+            "falta": {"type": "string"}}, "required": ["n", "estado", "falta"]}},
+        "errores": {"type": "array", "items": {"type": "object", "properties": {
+            "dijiste": {"type": "string"}, "correcto": {"type": "string"}}, "required": ["dijiste", "correcto"]}},
     },
-    "required": ["claves", "errores", "devolucion"],
+    "required": ["claves", "errores"],
 }
+
+# Reglas de tono comunes al corrector y al resumen de errores.
+ESTILO = """ESTILO (obligatorio):
+- 100% objetivo. Nada de elogios, ánimo ni frases para suavizar. Prohibido: "bien", "muy bien", "buen intento", "excelente", "correcto", "te acercaste", "interesante", "sin embargo", "recordá que".
+- Frases cortas y directas, en segunda persona. Sin introducción ni cierre.
+- Decí el dato concreto (la causa, el mecanismo, la condición, el nombre), no generalidades como "falta profundizar" o "explicá mejor".
+- Español rioplatense neutro, sin "che" ni muletillas. Sin emojis."""
 
 
 def prompt_correccion(m, q, respuesta):
@@ -119,14 +126,19 @@ def prompt_correccion(m, q, respuesta):
     lista = "\n".join(f"{k + 1}. {c}" for k, c in enumerate(claves)) or "1. Cubre las ideas centrales de la respuesta de referencia."
     errores = "\n".join(f"- {e}" for e in q.get("errores") or []) or "- (ninguno listado)"
     reglas = m.get("reglas_correccion", "")
-    return f"""Sos corrector de examen de la materia {m.get('titulo', '')}. Tu trabajo es verificar, no opinar.
-Para cada PUNTO CLAVE decidí si la respuesta del alumno lo contiene:
-- "presente": lo dice con sus palabras y sin errores.
-- "parcial": lo menciona pero incompleto, vago o con una imprecisión.
-- "ausente": no aparece.
-Después listá en "errores" solo afirmaciones del alumno que sean técnicamente incorrectas o que contradigan las reglas de la cátedra o los errores frecuentes listados. No inventes errores: si no hay, devolvé [].
-Juzgá el contenido, no la redacción ni la ortografía. Un sinónimo correcto cuenta.
-La "devolucion" son 2 o 3 oraciones en español rioplatense neutro (sin "che" ni muletillas), en segunda persona. Si todos los puntos están presentes y no hay errores, decíselo y sumá como mucho un detalle para pulir. Si no, decí qué le faltó o qué está mal y cómo mejorarlo, sin repetir lo que ya hizo bien.
+    return f"""Sos corrector de examen de la materia {m.get('titulo', '')}. Verificás contenido contra los puntos clave. No opinás ni das ánimo.
+
+TAREA:
+1. Para cada PUNTO CLAVE decidí si la respuesta del alumno lo contiene:
+   - "presente": lo dice con sus palabras y sin errores. Un sinónimo correcto cuenta.
+   - "parcial": lo menciona pero incompleto, vago o con una imprecisión.
+   - "ausente": no aparece, o solo aparece una mención genérica que no lo explica.
+   Ante la duda entre dos estados, elegí el más bajo.
+2. "falta": para cada punto parcial o ausente, qué le faltó decir o qué dijo impreciso, en UNA frase de 15 palabras como máximo. Ejemplo: "No dijiste que la cabecera de enlace se reemplaza en cada salto." Para los puntos presentes, "falta" va vacío ("").
+3. "errores": solo afirmaciones del alumno técnicamente incorrectas o que contradicen las reglas de la cátedra o los errores frecuentes listados. Para cada una, "dijiste" (lo que afirmó, en 12 palabras como máximo) y "correcto" (lo correcto, en 15 palabras como máximo). Si no hay errores, devolvé []. No inventes errores; algo que falta no es un error.
+Juzgá el contenido, no la redacción ni la ortografía.
+
+{ESTILO}
 
 Reglas de la cátedra: {reglas}
 
@@ -145,7 +157,46 @@ ERRORES FRECUENTES QUE INVALIDAN:
 RESPUESTA DEL ALUMNO:
 {respuesta}
 
-Respondé solo con JSON: {{"claves":[{{"n":1,"estado":"presente|parcial|ausente","comentario":"breve"}}],"errores":["..."],"devolucion":"..."}}"""
+Respondé solo con JSON: {{"claves":[{{"n":1,"estado":"presente|parcial|ausente","falta":"..."}}],"errores":[{{"dijiste":"...","correcto":"..."}}]}}"""
+
+
+ESQUEMA_REPASO = {
+    "type": "object",
+    "properties": {
+        "diagnostico": {"type": "string"},
+        "reforzar": {"type": "array", "items": {"type": "object", "properties": {
+            "tema": {"type": "string"}, "que_fallo": {"type": "string"}, "como_es": {"type": "string"},
+            "practica": {"type": "string"}}, "required": ["tema", "que_fallo", "como_es", "practica"]}},
+    },
+    "required": ["diagnostico", "reforzar"],
+}
+
+
+def prompt_repaso(m, clase, items):
+    bloques = []
+    for k, it in enumerate(items, 1):
+        q = it["q"]
+        lineas = [f"[{k}] PREGUNTA: {q['pregunta']}", f"RESULTADO: {it['resultado']}"]
+        lineas += [f"- Le faltó: {f}" for f in it["faltas"]]
+        lineas += [f"- Error: {e}" for e in it["errores"]]
+        lineas.append(f"RESPUESTA DE REFERENCIA: {q.get('referencia', '')}")
+        bloques.append("\n".join(lineas))
+    return f"""Sos tutor de la materia {m.get('titulo', '')}. El alumno terminó la autoevaluación de la clase {clase.get('n')} ({clase.get('titulo', '')}). Abajo están solo las preguntas que no respondió bien, con lo que le faltó y sus errores.
+
+TAREA:
+1. "diagnostico": 1 o 2 oraciones con el patrón de sus fallas (qué tipo de cosa le falla: confunde dos conceptos, no explica causas, no da el mecanismo, no sabe un tema). Nada de resumen general.
+2. "reforzar": de 1 a 5 temas, del más grave al menos grave. Agrupá preguntas que fallan por lo mismo. Para cada tema:
+   - "tema": nombre corto del concepto (hasta 6 palabras).
+   - "que_fallo": qué hizo mal o le faltó, concreto (hasta 20 palabras).
+   - "como_es": la explicación correcta, en 1 a 3 oraciones claras, sacada SOLO de las respuestas de referencia. Que se entienda sin haber leído nada más.
+   - "practica": una acción concreta para fijarlo, de hasta 20 palabras (por ejemplo: "Explicá en 3 líneas la diferencia entre X e Y con un ejemplo de cada una").
+No agregues información que no esté en las respuestas de referencia.
+
+{ESTILO}
+
+{chr(10).join(bloques)}
+
+Respondé solo con JSON: {{"diagnostico":"...","reforzar":[{{"tema":"...","que_fallo":"...","como_es":"...","practica":"..."}}]}}"""
 
 
 def http_json(url, body, headers=None, timeout=240):
@@ -154,7 +205,7 @@ def http_json(url, body, headers=None, timeout=240):
         return json.loads(r.read().decode())
 
 
-def llamar_modelo(prompt, proveedor):
+def llamar_modelo(prompt, proveedor, esquema=ESQUEMA):
     if proveedor == "gemini":
         if not CFG["gemini_key"]:
             raise RuntimeError("Falta GEMINI_API_KEY en .env")
@@ -164,7 +215,7 @@ def llamar_modelo(prompt, proveedor):
                       {"x-goog-api-key": CFG["gemini_key"]})
         return r["candidates"][0]["content"]["parts"][0]["text"]
     r = http_json(CFG["ollama"] + "/api/chat", {
-        "model": CFG["modelo"], "stream": False, "think": False, "format": ESQUEMA,
+        "model": CFG["modelo"], "stream": False, "think": False, "format": esquema,
         "options": {"temperature": 0}, "messages": [{"role": "user", "content": prompt}]})
     return r["message"]["content"]
 
@@ -176,6 +227,13 @@ def parse_json(txt):
     except ValueError:
         a, b = txt.find("{"), txt.rfind("}")
         return json.loads(txt[a:b + 1])
+
+
+ELOGIO = re.compile(r"^\s*(muy bien|bien|buen[oa]?|excelente|correcto|perfecto|genial)\b[^.]*\.\s*", re.I)
+
+
+def corto(t, n=240):
+    return ELOGIO.sub("", str(t or "")).strip()[:n]
 
 
 def corregir(slug, n, i, respuesta, proveedor=None):
@@ -191,8 +249,15 @@ def corregir(slug, n, i, respuesta, proveedor=None):
         c = estados.get(k, {})
         estado = c.get("estado") if c.get("estado") in ("presente", "parcial", "ausente") else "ausente"
         puntos += {"presente": 1, "parcial": 0.5}.get(estado, 0)
-        detalle.append({"texto": texto, "estado": estado, "comentario": str(c.get("comentario", ""))[:240]})
-    errores = [str(e)[:300] for e in data.get("errores", []) if str(e).strip()][:4]
+        falta = "" if estado == "presente" else corto(c.get("falta") or c.get("comentario"))
+        detalle.append({"texto": texto, "estado": estado, "falta": falta})
+    errores = []
+    for e in data.get("errores", []):
+        if isinstance(e, dict) and str(e.get("dijiste", "")).strip():
+            errores.append({"dijiste": corto(e["dijiste"], 200), "correcto": corto(e.get("correcto"), 240)})
+        elif isinstance(e, str) and e.strip():
+            errores.append({"dijiste": corto(e, 300), "correcto": ""})
+    errores = errores[:4]
     cobertura = puntos / len(claves)
     puntaje = round(10 * cobertura - 2 * len(errores))
     puntaje = max(0, min(10, puntaje))
@@ -201,8 +266,36 @@ def corregir(slug, n, i, respuesta, proveedor=None):
     else:
         veredicto = 2 if cobertura >= 0.8 else 1 if cobertura >= 0.45 else 0
     return 200, {"veredicto": veredicto, "puntaje": puntaje, "claves": detalle, "errores": errores,
-                 "devolucion": str(data.get("devolucion", ""))[:800],
                  "modelo": CFG["gemini_modelo"] if proveedor == "gemini" else CFG["modelo"]}
+
+
+def repaso(slug, n, items, proveedor=None):
+    """Resumen personalizado de los errores de una clase, a partir de las preguntas que salieron mal."""
+    d = materia_dir(slug)
+    if not d:
+        return 404, {"error": "Materia no encontrada"}
+    m = json.loads((d / "materia.json").read_text(encoding="utf-8"))
+    clase = next((c for c in m.get("clases", []) if int(c["n"]) == int(n)), {"n": n})
+    q = d / "preguntas" / f"clase{int(n):02d}.json"
+    qs = json.loads(q.read_text(encoding="utf-8")) if q.exists() else []
+    RES = {0: "no la sabía", 1: "a medias"}
+    datos = []
+    for it in items[:30]:
+        i = int(it.get("i", -1))
+        if not (0 <= i < len(qs)) or it.get("veredicto") not in (0, 1):
+            continue
+        faltas = [str(f)[:240] for f in it.get("faltas") or [] if str(f).strip()][:6]
+        errores = [str(e)[:300] for e in it.get("errores") or [] if str(e).strip()][:4]
+        if not faltas and not errores:
+            # Sin corrección ("No la sé" o autocalificada): todo lo que pedía la pregunta es a repasar.
+            faltas = list(qs[i].get("claves") or [])
+        datos.append({"q": qs[i], "resultado": RES[it["veredicto"]], "faltas": faltas, "errores": errores})
+    if not datos:
+        return 400, {"error": "No hay preguntas mal o a medias para resumir."}
+    data = parse_json(llamar_modelo(prompt_repaso(m, clase, datos), proveedor or CFG["proveedor"], ESQUEMA_REPASO))
+    reforzar = [{k: corto(r.get(k), 500) for k in ("tema", "que_fallo", "como_es", "practica")}
+                for r in data.get("reforzar", []) if isinstance(r, dict) and str(r.get("tema", "")).strip()][:5]
+    return 200, {"diagnostico": corto(data.get("diagnostico"), 400), "reforzar": reforzar}
 
 # ---------------------------------------------------------------- transcripción
 
@@ -300,6 +393,10 @@ class Handler(BaseHTTPRequestHandler):
                 if len(resp.split()) < 8:
                     return self.enviar(400, {"error": "Escribí una respuesta un poco más completa antes de corregirla."})
                 code, out = corregir(str(d.get("materia")), int(d.get("clase")), int(d.get("i")), resp[:6000], d.get("proveedor"))
+                return self.enviar(code, out)
+            if p == "/api/repaso":
+                d = json.loads(cuerpo or b"{}")
+                code, out = repaso(str(d.get("materia")), int(d.get("clase")), list(d.get("items") or []), d.get("proveedor"))
                 return self.enviar(code, out)
             if p == "/api/transcribir":
                 code, out = transcribir(cuerpo, self.headers.get("Content-Type", ""))

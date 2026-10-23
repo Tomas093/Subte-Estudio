@@ -6,11 +6,15 @@ El contenido de cada materia (resúmenes, preguntas, plan) lo arman agentes de C
 
 ![Estación abierta de la materia de ejemplo](docs/captura.png)
 
+**¿Primera vez?** Seguí la guía [Cómo se usa, paso a paso](app/ayuda.md). También está dentro de la app, en la pestaña "Cómo se usa".
+
 ## Qué hace
 
 - **Recorrido:** diagrama de la red con las estaciones completas, la actual y la próxima. Cada estación tiene cuatro pasos: video, audio, resumen y autoevaluación.
 - **Autoevaluación:** preguntas de casos con respuesta de referencia y puntos clave. La respuesta de referencia no se muestra hasta que escribís al menos ocho palabras o marcás "No la sé".
-- **Corrección local:** el corrector marca cada punto clave como presente, parcial o ausente, detecta errores contra las reglas de la cátedra y te da una devolución. Por defecto usa [Ollama](https://ollama.com) con un modelo local; también puede usar Gemini.
+- **Corrección:** el corrector marca cada punto clave como presente, parcial o ausente y te devuelve, en frases cortas y sin elogios, qué te faltó y qué dijiste mal y cómo es en realidad. Por defecto usa [Ollama](https://ollama.com) con un modelo local; también puede usar Gemini.
+- **Dónde se explica:** cada pregunta enlaza a la sección del resumen que la responde.
+- **Resumen de tus errores:** al calificar todas las preguntas de una clase, el corrector arma qué tenés que reforzar (qué fallaste, cómo es lo correcto y un ejercicio para fijarlo) y qué secciones releer.
 - **Dictado:** grabás tu respuesta con el micrófono y [whisper.cpp](https://github.com/ggml-org/whisper.cpp) la transcribe en tu compu.
 - **Horario:** plan por días hasta el examen.
 - **Terminal:** material general, examen modelo y la guía de cómo responder.
@@ -62,6 +66,9 @@ El skill [`nueva-materia`](.claude/skills/nueva-materia/SKILL.md) coordina estos
 | [`resumidor`](.claude/agents/resumidor.md) | Escribe el resumen de cada clase: cada tema con el problema, el mecanismo, un ejemplo, el costo y el error típico |
 | [`preguntador`](.claude/agents/preguntador.md) | Escribe de 8 a 12 preguntas de casos por clase con referencia, puntos clave y errores que invalidan |
 | [`guia-examen`](.claude/agents/guia-examen.md) | Escribe "Cómo responder el examen" a partir del examen modelo y su pauta |
+| [`auditor`](.claude/agents/auditor.md) | Revisa que cada pregunta se pueda responder con el resumen de su clase: si falta la explicación la agrega, si el tema no está en el material saca la pregunta, y completa `donde` |
+
+Si en una materia ya armada hay preguntas que piden cosas que el resumen no explica, pedile a Claude Code: "Usá el skill auditar-preguntas con la materia <slug>".
 
 Los videos y audios por clase se generan aparte en NotebookLM y se enlazan en `materia.json`; el skill explica cómo.
 
@@ -72,7 +79,7 @@ materias/<slug>/
   materia.json              clases, fases, examen, plan, enlaces, reglas de corrección
   resumen/claseNN.md        resumen de cada clase
   resumen/como-responder.md guía del examen (opcional)
-  preguntas/claseNN.json    [{pregunta, referencia, claves[], errores[]}]
+  preguntas/claseNN.json    [{pregunta, referencia, claves[], errores[], donde}]
   fuentes/                  PDFs de la cátedra y su texto en fuentes/txt/
 ```
 

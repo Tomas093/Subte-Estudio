@@ -9,6 +9,13 @@ import sys
 from pathlib import Path
 
 
+def norm(t):
+    """Igual que norm() en app/app.js: así se compara el campo "donde" con los títulos del resumen."""
+    t = re.sub(r"^#+\s*", "", str(t or ""))
+    t = re.sub(r"\s+", " ", re.sub(r"[*`_]", "", t)).strip()
+    return re.sub(r"[.:]$", "", t).lower()
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -40,10 +47,12 @@ def main():
             avisos.append(f"clase {n}: no existe {c['apunte']}")
         nn = f"{int(n):02d}"
         r = d / "resumen" / f"clase{nn}.md"
+        titulos = set()
         if not r.exists():
             avisos.append(f"clase {n}: falta resumen/clase{nn}.md")
         else:
             txt = r.read_text(encoding="utf-8")
+            titulos = {norm(l) for l in txt.splitlines() if re.match(r"^#{1,4}\s", l)}
             if "⇒" in txt:
                 avisos.append(f"clase {n}: el resumen usa '⇒' en la prosa")
         q = d / "preguntas" / f"clase{nn}.json"
@@ -60,6 +69,10 @@ def main():
                 errores.append(f"clase {n} pregunta {i}: falta pregunta o referencia")
             if not p.get("claves"):
                 avisos.append(f"clase {n} pregunta {i}: sin claves (el corrector será menos preciso)")
+            if not p.get("donde"):
+                avisos.append(f"clase {n} pregunta {i}: sin 'donde' (no tendrá el enlace \"Dónde se explica\")")
+            elif titulos and norm(p["donde"]) not in titulos:
+                errores.append(f"clase {n} pregunta {i}: 'donde' = \"{p['donde']}\" no es un título de resumen/clase{nn}.md")
     for a in avisos:
         print("aviso:", a)
     for e in errores:

@@ -21,6 +21,7 @@ Repartí las clases en grupos de 2 o 3 y lanzá, por cada grupo, un agente que h
 
 ## 4. Verificación
 
+- Lanzá el agente `auditor` sobre todas las clases (en grupos de 2 o 3): revisa que cada pregunta se pueda responder con el resumen y completa `donde`.
 - `python3 scripts/validar.py materias/<slug>` tiene que terminar sin errores.
 - Leé al menos un resumen y tres preguntas de una clase de prioridad alta. Si hay símbolos telegráficos, afirmaciones que no están en las fuentes o claves vagas, devolvéselo al agente con el ejemplo concreto.
 
