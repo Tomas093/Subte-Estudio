@@ -26,6 +26,19 @@ Arriba está el mapa. La estación con el círculo negro es la que tenés abiert
 
 Cuando tildás los cuatro pasos, la estación se pinta en el mapa.
 
+### Escuchar el resumen mientras lo leés
+
+1. Arriba del resumen, tocá **Escuchar el resumen**. Abajo aparece una barra.
+2. Arranca desde el primer párrafo que tenés en pantalla y resalta en amarillo lo que está leyendo. La página baja sola; si scrolleás vos, te deja tranquilo unos segundos.
+3. **Tocá cualquier párrafo** para que lea desde ahí. Con los botones ◀◀ y ▶▶ vas al párrafo anterior o al siguiente.
+4. **Velocidad**: de 0,8× a 1,5×.
+5. **Voz**:
+   - **Voz de Gemini** (la más humana; aparece si tenés `GEMINI_API_KEY`). Podés probar distintas voces en el segundo menú: Kore, Charon, Aoede, Puck y otras. Cada párrafo se genera una sola vez y queda guardado en `cache/`: la segunda vez que lo escuchás no cuesta nada y arranca al instante. La primera vez tarda unos segundos en arrancar.
+   - **Voz del sistema** (gratis y sin internet). En la Mac suena mucho mejor si bajás una voz mejorada: Ajustes del Sistema → Accesibilidad → Contenido leído → Voz del sistema → Gestionar voces → Español, y bajá una que diga "Mejorada" o "Premium" (por ejemplo Mónica o Paulina). Después recargá la página y elegila en el menú. Si en Chrome no aparece, probá en Safari.
+6. **Cerrar** apaga el lector.
+
+Si Gemini dice que llegaste al límite, esperá un rato o tocá "Usar la voz del sistema".
+
 ### Cómo responder una pregunta
 
 1. Escribí tu respuesta como en el examen (o tocá **Dictar** y hablá). Mínimo 8 palabras.

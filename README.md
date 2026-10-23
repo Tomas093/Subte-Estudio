@@ -15,6 +15,7 @@ El contenido de cada materia (resúmenes, preguntas, plan) lo arman agentes de C
 - **Corrección:** el corrector marca cada punto clave como presente, parcial o ausente y te devuelve, en frases cortas y sin elogios, qué te faltó y qué dijiste mal y cómo es en realidad. Por defecto usa [Ollama](https://ollama.com) con un modelo local; también puede usar Gemini.
 - **Dónde se explica:** cada pregunta enlaza a la sección del resumen que la responde.
 - **Resumen de tus errores:** al calificar todas las preguntas de una clase, el corrector arma qué tenés que reforzar (qué fallaste, cómo es lo correcto y un ejercicio para fijarlo) y qué secciones releer.
+- **Escuchar el resumen:** lo lee en voz alta y resalta el párrafo que va leyendo, con velocidad ajustable. Usa la voz de Gemini (la más natural; cada párrafo se genera una vez y queda en `cache/`) o la voz del sistema, gratis y sin internet.
 - **Dictado:** grabás tu respuesta con el micrófono y [whisper.cpp](https://github.com/ggml-org/whisper.cpp) la transcribe en tu compu.
 - **Horario:** plan por días hasta el examen.
 - **Terminal:** material general, examen modelo y la guía de cómo responder.
@@ -48,6 +49,7 @@ Abrí `http://127.0.0.1:8765`. Si tenés varias materias, elegís cuál en el se
 | `SUBTE_PROVEEDOR` | `ollama` (local) o `gemini` |
 | `SUBTE_MODELO` | Modelo de Ollama, por defecto `qwen3:30b` |
 | `GEMINI_API_KEY`, `GEMINI_MODELO` | Solo si usás Gemini; se cobra por uso según la tarifa de Google |
+| `GEMINI_VOZ`, `GEMINI_TTS_MODELO`, `GEMINI_VOZ_ESTILO` | Voz que lee los resúmenes, modelo de voz e instrucción de tono |
 | `WHISPER_MODELO` | Ruta al modelo ggml de whisper.cpp |
 | `WHISPER_IDIOMA` | Idioma del dictado, por defecto `es` |
 | `SUBTE_DATOS` | Carpeta del progreso, por defecto `progreso/`. Poné una de iCloud o Dropbox para usarlo en varias compus |

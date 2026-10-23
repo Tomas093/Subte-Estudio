@@ -137,6 +137,7 @@
 
   /* ---------- estación ---------- */
   function station() {
+    if (window.Lector) Lector.parar();
     const c = byN(current()), f = fase(c), ids = stepIds(c);
     const qs = (c.preguntas || []).map((q, i) => question(c, q, i)).join("");
     $("view-ruta").innerHTML = `
@@ -146,7 +147,7 @@
           <div class="st-meta"><span class="chip">Línea ${esc(f.linea || f.id)} · ${esc(f.nombre)}</span>${c.prioridad === "alta" ? '<span class="chip hot">pesa mucho en el examen</span>' : '<span class="chip">peso medio</span>'}</div></div></div>
         ${c.por_que ? `<p class="why">${esc(c.por_que)}</p>` : ""}
         ${c.marco ? `<div class="dline">${esc(c.marco)}</div>` : ""}
-        <h3 class="sec">Resumen de la clase</h3>
+        <div class="sec-row"><h3 class="sec">Resumen de la clase</h3>${c.resumen_md ? `<button class="btn escuchar" data-escuchar="1" aria-label="Escuchar el resumen en voz alta">Escuchar el resumen</button>` : ""}</div>
         <div class="read">${md(c.resumen_md) || '<p class="empty">Todavía no hay resumen para esta clase.</p>'}</div>
         <h3 class="sec">Autoevaluación · ${plural((c.preguntas || []).length, "pregunta")}</h3>
         <p class="qintro" id="qintro">${introText()}</p>
@@ -385,6 +386,7 @@
       const rb = document.querySelector(`[data-ref="${k}"]`); if (rb) { rb.disabled = false; rb.setAttribute("aria-expanded", "true"); rb.textContent = "Ocultar respuesta de referencia"; }
       document.querySelectorAll(`[data-rate="${k}"]`).forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.v === 0))); weakCount(); finRender(kq(k).c); return;
     }
+    if (t.dataset.escuchar) return Lector.empezar({ read: document.querySelector("#view-ruta .read"), slug: M.slug, gemini: !!ST.voz_gemini, voces: ST.voces, vozDef: ST.voz });
     if (t.dataset.donde) return irDonde(t.dataset.dondeC, t.dataset.donde);
     if (t.dataset.fin) return armarFin(byN(t.dataset.fin));
     if (t.dataset.gofin) return open(t.dataset.gofin, "fin-" + t.dataset.gofin);

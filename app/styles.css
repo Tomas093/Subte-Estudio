@@ -2,7 +2,7 @@
 :root{
   --tile:#f6f8f7; --grout:#dde3e1; --tile-img:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2244%22%20height%3D%2244%22%3E%3Crect%20width%3D%2244%22%20height%3D%2244%22%20fill%3D%22%23f6f8f7%22/%3E%3Cpath%20d%3D%22M0%20.5H44M0%2022.5H44M.5%200V22M22.5%2022V44%22%20stroke%3D%22%23dde3e1%22%20stroke-width%3D%221%22/%3E%3C/svg%3E"); --panel:#ffffff; --sunk:#f4f6f5;
   --ink:#15191c; --muted:#4a535b; --line:#d5dbd9;
-  --sign:#15191c; --sign-ink:#ffffff; --sign-muted:#b9c2c9;
+  --sign:#15191c; --sign-ink:#ffffff; --sign-muted:#b9c2c9; --marca:#fff0a3;
   --la:#00a0de; --la-ink:#00668f; --la-soft:#e1f3fb;
   --lh:#f2b705; --lh-ink:#7a5800; --lh-soft:#fdf3d2;
   --lb:#e2231a; --lb-ink:#b0170f; --lb-soft:#fde4e2;
@@ -14,14 +14,14 @@
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --tile:#111417; --grout:#1d2226; --tile-img:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2244%22%20height%3D%2244%22%3E%3Crect%20width%3D%2244%22%20height%3D%2244%22%20fill%3D%22%23111417%22/%3E%3Cpath%20d%3D%22M0%20.5H44M0%2022.5H44M.5%200V22M22.5%2022V44%22%20stroke%3D%22%231d2226%22%20stroke-width%3D%221%22/%3E%3C/svg%3E"); --panel:#1a1e22; --sunk:#22272c;
   --ink:#e7eaec; --muted:#a6b0b8; --line:#2e353b;
-  --sign:#050607; --sign-ink:#ffffff; --sign-muted:#9aa4ac;
+  --sign:#050607; --sign-ink:#ffffff; --sign-muted:#9aa4ac; --marca:#4d4214;
   --la-ink:#5cc6ef; --la-soft:#0d2a36; --lh-ink:#f6cc4e; --lh-soft:#33290b; --lb-ink:#ff7a72; --lb-soft:#3a1412;
   --ok:#7ccf93; --ok-soft:#14301d; --mid:#f0be62; --mid-soft:#352a12; --bad:#ff7a72; --bad-soft:#3a1412;
   --focus:#5cc6ef; color-scheme:dark}}
 :root[data-theme="dark"]{
   --tile:#111417; --grout:#1d2226; --tile-img:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2244%22%20height%3D%2244%22%3E%3Crect%20width%3D%2244%22%20height%3D%2244%22%20fill%3D%22%23111417%22/%3E%3Cpath%20d%3D%22M0%20.5H44M0%2022.5H44M.5%200V22M22.5%2022V44%22%20stroke%3D%22%231d2226%22%20stroke-width%3D%221%22/%3E%3C/svg%3E"); --panel:#1a1e22; --sunk:#22272c;
   --ink:#e7eaec; --muted:#a6b0b8; --line:#2e353b;
-  --sign:#050607; --sign-ink:#ffffff; --sign-muted:#9aa4ac;
+  --sign:#050607; --sign-ink:#ffffff; --sign-muted:#9aa4ac; --marca:#4d4214;
   --la-ink:#5cc6ef; --la-soft:#0d2a36; --lh-ink:#f6cc4e; --lh-soft:#33290b; --lb-ink:#ff7a72; --lb-soft:#3a1412;
   --ok:#7ccf93; --ok-soft:#14301d; --mid:#f0be62; --mid-soft:#352a12; --bad:#ff7a72; --bad-soft:#3a1412;
   --focus:#5cc6ef; color-scheme:dark}
@@ -266,3 +266,21 @@ button.donde{background:none;border:0;padding:0;margin-top:8px;color:var(--la-in
 .fin-q .mal li{flex-direction:column;padding-left:10px;border-left:3px solid var(--bad)}
 .fin-q .mal .ok-t{color:var(--ok);font-weight:600}
 .repaso .temas{margin:4px 0;color:var(--muted);font-size:.92rem}
+
+/* lector en voz alta */
+.sec-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.sec-row .sec{flex:1 1 auto}
+.read .leyendo{background:var(--marca);border-radius:4px;box-shadow:0 0 0 5px var(--marca);transition:background .25s}
+.read.lector-on p,.read.lector-on li,.read.lector-on h3,.read.lector-on h4,.read.lector-on tr{cursor:pointer}
+.lector{position:fixed;left:0;right:0;bottom:0;z-index:50;background:var(--panel);border-top:3px solid var(--sign);box-shadow:0 -6px 24px rgba(0,0,0,.12);padding:10px 0 calc(10px + env(safe-area-inset-bottom))}
+.lector .l-in{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;font:600 .88rem var(--sign-font)}
+.lector .l-btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;padding:7px 14px;font:700 .88rem var(--sign-font);cursor:pointer}
+.lector .l-btn.primary{background:var(--ink);color:var(--panel);border-color:var(--ink);min-width:6.5em}
+.lector select{font:600 .86rem var(--sign-font);padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);max-width:15em}
+.lector .l-pos{color:var(--muted);font-variant-numeric:tabular-nums}
+.lector .l-estado{flex-basis:100%;color:var(--muted);font-weight:500}
+.lector .l-estado:empty{display:none}
+.lector .l-estado .lk{background:none;border:0;padding:0;color:var(--la-ink);text-decoration:underline;cursor:pointer;font:inherit}
+.lector .l-tip{color:var(--muted);font-weight:500;font-size:.8rem}
+body.con-lector{padding-bottom:120px}
+@media (max-width:560px){.lector .l-tip{display:none}.lector select{max-width:9em}}

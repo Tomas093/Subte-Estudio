@@ -5,6 +5,9 @@ materias/*
 # Tu progreso (respuestas, repasos): queda en tu compu
 progreso/
 
+# Audio generado de los resúmenes (se regenera si se borra)
+cache/
+
 # Configuración local y temporales
 .env
 __pycache__/
