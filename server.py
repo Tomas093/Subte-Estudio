@@ -7,6 +7,8 @@ whisper.cpp. Solo usa la biblioteca estándar de Python.
 
     python3 server.py            # http://127.0.0.1:8765
 """
+import base64
+import hashlib
 import json
 import os
 import re
@@ -14,6 +16,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
+import wave
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -23,6 +27,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 APP = ROOT / "app"
 MATERIAS = ROOT / "materias"
+CACHE = ROOT / "cache"
 SLUG = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 
 
@@ -43,10 +48,14 @@ CFG = {
     "ollama": os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/"),
     "gemini_key": os.environ.get("GEMINI_API_KEY", ""),
     "gemini_modelo": os.environ.get("GEMINI_MODELO", "gemini-2.5-flash"),
+    "tts_modelo": os.environ.get("GEMINI_TTS_MODELO", "gemini-2.5-flash-preview-tts"),
+    "tts_voz": os.environ.get("GEMINI_VOZ", "Kore"),
+    "tts_estilo": os.environ.get("GEMINI_VOZ_ESTILO", "Leé en voz alta el siguiente texto en español, con acento rioplatense, voz clara y ritmo tranquilo, como un profesor que le explica a un alumno. No agregues nada."),
     "whisper_bin": os.environ.get("WHISPER_BIN", "whisper-cli"),
     "whisper_modelo": os.path.expanduser(os.environ.get("WHISPER_MODELO", "")),
     "whisper_idioma": os.environ.get("WHISPER_IDIOMA", "es"),
     "puerto": int(os.environ.get("PUERTO", "8765")),
+    "datos": Path(os.path.expanduser(os.environ.get("SUBTE_DATOS", ""))) if os.environ.get("SUBTE_DATOS") else ROOT / "progreso",
 }
 
 # ---------------------------------------------------------------- materias
@@ -98,6 +107,33 @@ def pregunta(slug, n, i):
         return m, None
     clase = next((c for c in m.get("clases", []) if int(c["n"]) == int(n)), {})
     return m, dict(qs[i], clase=clase)
+
+# ---------------------------------------------------------------- progreso
+# Un archivo JSON por materia en progreso/ (o SUBTE_DATOS), más una copia por día en progreso/copias/.
+
+COPIAS = 14
+
+
+def leer_progreso(slug):
+    f = CFG["datos"] / f"{slug}.json"
+    return json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
+
+
+def guardar_progreso(slug, datos):
+    if not isinstance(datos, dict):
+        raise ValueError("el progreso tiene que ser un objeto")
+    CFG["datos"].mkdir(parents=True, exist_ok=True)
+    f = CFG["datos"] / f"{slug}.json"
+    tmp = f.with_suffix(".tmp")
+    tmp.write_text(json.dumps(datos, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, f)
+    copias = CFG["datos"] / "copias"
+    copias.mkdir(exist_ok=True)
+    hoy = copias / f"{slug}-{time.strftime('%Y-%m-%d')}.json"
+    if not hoy.exists():
+        shutil.copyfile(f, hoy)
+        for viejo in sorted(copias.glob(f"{slug}-????-??-??.json"))[:-COPIAS]:
+            viejo.unlink()
 
 # ---------------------------------------------------------------- corrección
 
@@ -297,6 +333,57 @@ def repaso(slug, n, items, proveedor=None):
                 for r in data.get("reforzar", []) if isinstance(r, dict) and str(r.get("tema", "")).strip()][:5]
     return 200, {"diagnostico": corto(data.get("diagnostico"), 400), "reforzar": reforzar}
 
+# ---------------------------------------------------------------- lectura en voz alta (Gemini TTS)
+# Cada fragmento se genera una vez y queda en cache/voz/<materia>/; volver a escucharlo no cuesta.
+
+VOCES = ["Kore", "Charon", "Aoede", "Puck", "Leda", "Zephyr", "Orus", "Fenrir"]
+TTS_MODELOS_ALTERNATIVOS = ["gemini-2.5-flash-preview-tts", "gemini-3.1-flash-tts-preview"]
+
+
+def voz(slug, texto, nombre=None):
+    if not CFG["gemini_key"]:
+        return 503, {"error": "Para la voz de Gemini falta GEMINI_API_KEY en .env. Mientras tanto usá la voz del sistema."}
+    texto = re.sub(r"\s+", " ", str(texto)).strip()[:3000]
+    if not texto:
+        return 400, {"error": "No hay texto para leer."}
+    nombre = nombre if nombre in VOCES else CFG["tts_voz"]
+    clave = hashlib.sha1("|".join([nombre, CFG["tts_estilo"], texto]).encode()).hexdigest()[:24]
+    d = CACHE / "voz" / slug
+    for ext in (".m4a", ".wav"):
+        if (d / (clave + ext)).exists():
+            return 200, {"url": f"/cache/voz/{slug}/{clave}{ext}"}
+    cuerpo = {"contents": [{"parts": [{"text": f"{CFG['tts_estilo']}\n\n{texto}"}]}],
+              "generationConfig": {"responseModalities": ["AUDIO"], "speechConfig": {
+                  "voiceConfig": {"prebuiltVoiceConfig": {"voiceName": nombre}}}}}
+    modelos = [CFG["tts_modelo"]] + [m for m in TTS_MODELOS_ALTERNATIVOS if m != CFG["tts_modelo"]]
+    for k, modelo in enumerate(modelos):
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent"
+        try:
+            r = http_json(url, cuerpo, {"x-goog-api-key": CFG["gemini_key"]}, timeout=120)
+            break
+        except urllib.error.HTTPError as e:
+            if e.code == 404 and k + 1 < len(modelos):
+                continue  # el modelo de vista previa cambió de nombre: probar el siguiente
+            if e.code == 429:
+                return 429, {"error": "Gemini dice que llegaste al límite de pedidos de voz por ahora. Esperá un rato o usá la voz del sistema."}
+            return 502, {"error": f"Gemini no pudo generar la voz ({e.code}): {e.read().decode(errors='ignore')[:200]}"}
+    pcm = base64.b64decode(r["candidates"][0]["content"]["parts"][0]["inlineData"]["data"])
+    d.mkdir(parents=True, exist_ok=True)
+    wav = d / (clave + ".wav")
+    with wave.open(str(wav), "wb") as w:  # Gemini devuelve PCM de 16 bits, mono, 24 kHz
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(24000)
+        w.writeframes(pcm)
+    if shutil.which("ffmpeg"):
+        m4a = d / (clave + ".m4a")
+        ok = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(wav), "-c:a", "aac", "-b:a", "64k", str(m4a)],
+                            timeout=120).returncode == 0
+        if ok:
+            wav.unlink()
+            return 200, {"url": f"/cache/voz/{slug}/{clave}.m4a"}
+    return 200, {"url": f"/cache/voz/{slug}/{clave}.wav"}
+
 # ---------------------------------------------------------------- transcripción
 
 
@@ -333,13 +420,16 @@ def estado():
         st["modelo_disponible"] = any(t == CFG["modelo"] or t.startswith(CFG["modelo"] + ":") or t.split(":")[0] == CFG["modelo"] for t in tags) or CFG["modelo"] in tags
     except (urllib.error.URLError, OSError, ValueError):
         pass
+    st["voz_gemini"] = bool(CFG["gemini_key"])
+    st["voces"] = VOCES
+    st["voz"] = CFG["tts_voz"]
     st["corrector"] = (st["proveedor"] == "gemini" and st["gemini"]) or (st["proveedor"] != "gemini" and st["modelo_disponible"])
     return st
 
 # ---------------------------------------------------------------- HTTP
 
 TIPOS = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
-         ".json": "application/json", ".pdf": "application/pdf", ".svg": "image/svg+xml", ".png": "image/png"}
+         ".json": "application/json", ".md": "text/markdown; charset=utf-8", ".m4a": "audio/mp4", ".wav": "audio/wav", ".pdf": "application/pdf", ".svg": "image/svg+xml", ".png": "image/png"}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -357,7 +447,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def archivo(self, path):
         path = path.resolve()
-        if not path.is_file() or not (str(path).startswith(str(APP)) or str(path).startswith(str(MATERIAS))):
+        if not path.is_file() or not (str(path).startswith(str(APP)) or str(path).startswith(str(MATERIAS)) or str(path).startswith(str(CACHE))):
             return self.enviar(404, {"error": "No encontrado"})
         self.enviar(200, path.read_bytes(), TIPOS.get(path.suffix, "application/octet-stream"))
 
@@ -375,6 +465,15 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             data = cargar_materia(m.group(1))
             return self.enviar(200, data) if data else self.enviar(404, {"error": "Materia no encontrada"})
+        m = re.match(r"^/cache/voz/([a-z0-9-]+)/([0-9a-f]+\.(?:m4a|wav))$", p)
+        if m:
+            return self.archivo(CACHE / "voz" / m.group(1) / m.group(2))
+        m = re.match(r"^/api/progreso/([a-z0-9-]+)$", p)
+        if m and materia_dir(m.group(1)):
+            try:
+                return self.enviar(200, {"datos": leer_progreso(m.group(1))})
+            except (OSError, ValueError) as e:
+                return self.enviar(500, {"error": f"No se pudo leer el progreso ({e})"})
         m = re.match(r"^/materias/([a-z0-9-]+)/(fuentes/[^/]+)$", urllib.parse.unquote(p))
         if m and materia_dir(m.group(1)):
             return self.archivo(MATERIAS / m.group(1) / m.group(2))
@@ -394,6 +493,20 @@ class Handler(BaseHTTPRequestHandler):
                     return self.enviar(400, {"error": "Escribí una respuesta un poco más completa antes de corregirla."})
                 code, out = corregir(str(d.get("materia")), int(d.get("clase")), int(d.get("i")), resp[:6000], d.get("proveedor"))
                 return self.enviar(code, out)
+            m = re.match(r"^/api/progreso/([a-z0-9-]+)$", p)
+            if m and materia_dir(m.group(1)):
+                try:
+                    guardar_progreso(m.group(1), json.loads(cuerpo or b"{}"))
+                except OSError as e:
+                    return self.enviar(500, {"error": f"No se pudo guardar el progreso ({e})"})
+                return self.enviar(200, {"ok": True})
+            if p == "/api/voz":
+                d = json.loads(cuerpo or b"{}")
+                slug = str(d.get("materia"))
+                if not materia_dir(slug):
+                    return self.enviar(404, {"error": "Materia no encontrada"})
+                code, out = voz(slug, d.get("texto", ""), d.get("voz"))
+                return self.enviar(code, out)
             if p == "/api/repaso":
                 d = json.loads(cuerpo or b"{}")
                 code, out = repaso(str(d.get("materia")), int(d.get("clase")), list(d.get("items") or []), d.get("proveedor"))
@@ -412,6 +525,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     srv = ThreadingHTTPServer(("127.0.0.1", CFG["puerto"]), Handler)
+    print(f"Progreso guardado en {CFG['datos']}")
     print(f"Subte Estudio en http://127.0.0.1:{CFG['puerto']}  (corrector: {CFG['proveedor']} · {CFG['modelo'] if CFG['proveedor'] != 'gemini' else CFG['gemini_modelo']})")
     try:
         srv.serve_forever()
