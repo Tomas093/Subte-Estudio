@@ -39,6 +39,15 @@ Cuando tildás los cuatro pasos, la estación se pinta en el mapa.
 
 Si Gemini dice que llegaste al límite, esperá un rato o tocá "Usar la voz del sistema".
 
+### Tomar apuntes
+
+A la derecha del resumen, debajo de "Pasos en esta estación", está **Mis apuntes**: un lugar por clase para escribir lo esencial con tus palabras. En el celular es el botón **Mis apuntes** abajo a la derecha.
+
+- Se guarda solo mientras escribís (dice "Guardado").
+- **Seleccioná texto del resumen** y aparece el botón **A mis apuntes**: lo copia como un punto nuevo. Después reescribilo más corto: escribirlo con tus palabras es lo que hace que te quede.
+- Si empezás las líneas con `- ` se ven como lista.
+- La pestaña **Mis apuntes** junta los de todas las clases para repasar antes del examen, y con **Descargar todo (.md)** te los llevás en un archivo.
+
 ### Cómo responder una pregunta
 
 1. Escribí tu respuesta como en el examen (o tocá **Dictar** y hablá). Mínimo 8 palabras.

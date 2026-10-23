@@ -138,6 +138,7 @@
   /* ---------- estación ---------- */
   function station() {
     if (window.Lector) Lector.parar();
+    document.body.classList.remove("notas-abiertas");
     const c = byN(current()), f = fase(c), ids = stepIds(c);
     const qs = (c.preguntas || []).map((q, i) => question(c, q, i)).join("");
     $("view-ruta").innerHTML = `
@@ -168,7 +169,13 @@
           ${c.audio ? `<a href="${esc(c.audio.url)}" target="_blank" rel="noopener">${ICON.audio}<span>${esc(c.audio.titulo)}<small>Audio · ${esc(c.audio.duracion || "")}</small></span></a>` : ""}
         </div>
         ${c.apunte ? `<a class="pdf" href="${esc(fileUrl(c.apunte))}" target="_blank" rel="noopener">Apunte completo de la clase (PDF)</a>` : ""}
+        <section class="notas" aria-label="Mis apuntes de la clase ${c.n}">
+          <div class="notas-head"><h3>Mis apuntes</h3><span class="notas-ok" id="notasOk" aria-live="polite"></span><button class="notas-x" data-notas="cerrar">Cerrar</button></div>
+          <textarea id="nota-${c.n}" data-nota="${c.n}" aria-label="Mis apuntes de la clase ${c.n}" placeholder="Lo esencial de la clase, con tus palabras.&#10;&#10;- Seguridad: algo malo nunca pasa.&#10;- Progreso: algo bueno termina pasando.">${esc(S["nota-" + c.n] || "")}</textarea>
+          <p class="notas-tip">Seleccioná texto del resumen y tocá <b>A mis apuntes</b> para traerlo acá. Todos tus apuntes juntos están en la pestaña "Mis apuntes".</p>
+        </section>
       </aside>
+      <button class="notas-fab" data-notas="abrir">Mis apuntes</button>
     </div>`;
     refreshChecks(); refreshQuestions(c); finRender(c);
   }
@@ -355,6 +362,56 @@
       (fins.length ? `<h3 class="sec">Resúmenes de tus errores</h3><ul class="weak">${fins.map(c => { const d = S["fin-" + c.n].data; return `<li>${roundel(c)}<div><span class="tag">Clase ${c.n} · ${esc(c.titulo)}</span><b>${esc(d.diagnostico)}</b><p class="temas">Reforzar: ${esc((d.reforzar || []).map(x => x.tema).join(" · "))}</p><div class="acts"><button data-gofin="${c.n}">Leer el resumen completo</button></div></div></li>`; }).join("")}</ul>` : "");
   }
 
+  /* ---------- mis apuntes ---------- */
+  function apuntes() {
+    const cs = M.clases.filter(c => (S["nota-" + c.n] || "").trim());
+    $("view-apuntes").innerHTML = `<div class="ap-head"><h2>Mis apuntes</h2>${cs.length ? `<button class="btn" data-notas="bajar">Descargar todo (.md)</button>` : ""}</div>
+      <p class="lead">Lo que escribiste en cada estación, todo junto para repasar antes del examen.</p>` +
+      (cs.length ? cs.map(c => `<section class="ap-clase"><div class="ap-t">${roundel(c)}<h3>Clase ${c.n} · ${esc(c.titulo)}</h3><button class="btn ghost" data-notas="editar" data-n="${c.n}">Editar</button></div><div class="read">${md(S["nota-" + c.n])}</div></section>`).join("")
+        : `<p class="empty">Todavía no escribiste apuntes. En cada estación, a la derecha (o en el botón "Mis apuntes" en el celular), tenés dónde escribir lo esencial.</p>`);
+  }
+  function bajarApuntes() {
+    const txt = `# Mis apuntes · ${M.titulo}\n\n` + M.clases.filter(c => (S["nota-" + c.n] || "").trim()).map(c => `## Clase ${c.n} · ${c.titulo}\n\n${S["nota-" + c.n].trim()}\n`).join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([txt], { type: "text/markdown" })); a.download = `apuntes-${M.slug}.md`; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  function notas(accion, n) {
+    if (accion === "abrir") { if (matchMedia("(max-width:980px)").matches) document.body.classList.add("notas-abiertas"); const ta = document.querySelector("[data-nota]"); if (ta) ta.focus(); }
+    if (accion === "cerrar") document.body.classList.remove("notas-abiertas");
+    if (accion === "bajar") bajarApuntes();
+    if (accion === "editar") { open(n, "nota-" + n); notas("abrir"); }
+  }
+  /* Seleccionar texto del resumen muestra "A mis apuntes" al lado de la selección. */
+  const btnNota = document.createElement("button");
+  btnNota.className = "agregar-nota"; btnNota.textContent = "A mis apuntes"; btnNota.hidden = true; document.body.appendChild(btnNota);
+  const seleccionResumen = () => {
+    const sel = getSelection(); if (!sel.rangeCount || sel.isCollapsed) return null;
+    const r = sel.getRangeAt(0), box = document.querySelector("#view-ruta .read");
+    return box && box.contains(r.commonAncestorContainer) && sel.toString().trim() ? r : null;
+  };
+  let selT;
+  document.addEventListener("selectionchange", () => {
+    clearTimeout(selT);
+    selT = setTimeout(() => {
+      const r = seleccionResumen(); if (!r) { btnNota.hidden = true; return; }
+      const b = r.getBoundingClientRect();
+      btnNota.style.top = (b.bottom + scrollY + 8) + "px";
+      btnNota.style.left = Math.max(8, Math.min(innerWidth - 150, b.left + scrollX)) + "px";
+      btnNota.hidden = false;
+    }, 120);
+  });
+  btnNota.addEventListener("mousedown", e => e.preventDefault());  // no perder la selección
+  btnNota.addEventListener("click", () => {
+    const sel = getSelection(), txt = sel.toString().replace(/\s+/g, " ").trim(), ta = document.querySelector("[data-nota]");
+    if (!txt || !ta) return;
+    const v = ta.value; ta.value = (v && !v.endsWith("\n") ? v + "\n" : v) + "- " + txt + "\n";
+    ta.dispatchEvent(new Event("input", { bubbles: true }));
+    ta.scrollTop = ta.scrollHeight; sel.removeAllRanges(); btnNota.hidden = true;
+    ta.classList.remove("flash"); void ta.offsetWidth; ta.classList.add("flash");
+    const ok = $("notasOk"); if (ok) ok.textContent = "Agregado";
+  });
+
   async function ayuda() {
     const v = $("view-ayuda"); if (v.dataset.ok) return;
     try { const r = await fetch("/app/ayuda.md"); if (!r.ok) throw 0; v.innerHTML = `<div class="read">${md(await r.text())}</div>`; v.dataset.ok = 1; }
@@ -364,8 +421,8 @@
   /* ---------- navegación ---------- */
   function show(view) {
     document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.view === view)));
-    for (const v of ["ruta", "horario", "terminal", "repaso", "ayuda"]) $("view-" + v).hidden = v !== view;
-    if (view === "horario") horario(); if (view === "terminal") terminal(); if (view === "repaso") repaso(); if (view === "ayuda") ayuda();
+    for (const v of ["ruta", "horario", "terminal", "repaso", "apuntes", "ayuda"]) $("view-" + v).hidden = v !== view;
+    if (view === "horario") horario(); if (view === "terminal") terminal(); if (view === "repaso") repaso(); if (view === "apuntes") apuntes(); if (view === "ayuda") ayuda();
     S.view = view; save();
   }
   function open(n, to) {
@@ -386,6 +443,7 @@
       const rb = document.querySelector(`[data-ref="${k}"]`); if (rb) { rb.disabled = false; rb.setAttribute("aria-expanded", "true"); rb.textContent = "Ocultar respuesta de referencia"; }
       document.querySelectorAll(`[data-rate="${k}"]`).forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.v === 0))); weakCount(); finRender(kq(k).c); return;
     }
+    if (t.dataset.notas) return notas(t.dataset.notas, t.dataset.n);
     if (t.dataset.escuchar) return Lector.empezar({ read: document.querySelector("#view-ruta .read"), slug: M.slug, gemini: !!ST.voz_gemini, voces: ST.voces, vozDef: ST.voz });
     if (t.dataset.donde) return irDonde(t.dataset.dondeC, t.dataset.donde);
     if (t.dataset.fin) return armarFin(byN(t.dataset.fin));
@@ -402,6 +460,11 @@
     }
   });
   document.addEventListener("input", e => {
+    if (e.target.dataset.nota) {
+      const n = e.target.dataset.nota; S["nota-" + n] = e.target.value; save();
+      const ok = $("notasOk"); if (ok) { ok.textContent = "Guardado"; clearTimeout(ok._t); ok._t = setTimeout(() => { ok.textContent = ""; }, 1500); }
+      return;
+    }
     const k = e.target.dataset.draft; if (!k) return;
     S["a-" + k] = e.target.value; save();
     const n = words(e.target.value), w = $("w-" + k); if (w) w.textContent = n ? n + " palabras" : "";
