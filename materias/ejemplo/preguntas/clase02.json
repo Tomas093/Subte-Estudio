@@ -1,0 +1,14 @@
+[
+  {
+    "pregunta": "El cliente envía 1000 bytes, el servidor los recibe, pero el ACK se pierde. ¿Qué hace cada lado y por qué los datos no quedan duplicados en la aplicación?",
+    "referencia": "Al no recibir el ACK antes del tiempo de espera, el cliente retransmite los mismos 1000 bytes con los mismos números de secuencia. El servidor ya los tenía: reconoce por número de secuencia que son duplicados, los descarta y vuelve a enviar el ACK del próximo byte que espera. La aplicación ve cada byte una sola vez.",
+    "claves": ["El cliente retransmite por vencimiento del tiempo de espera", "La retransmisión usa los mismos números de secuencia", "El servidor descarta los duplicados por número de secuencia", "El servidor reenvía el ACK del próximo byte esperado"],
+    "errores": ["Decir que el servidor entrega los datos dos veces a la aplicación", "Decir que el ACK confirma que la aplicación procesó los datos"]
+  },
+  {
+    "pregunta": "¿Por qué el saludo de TCP necesita tres mensajes y no dos?",
+    "referencia": "Cada lado elige su número de secuencia inicial y necesita saber que el otro lo recibió. Con SYN el cliente envía el suyo; con SYN-ACK el servidor confirma el del cliente y envía el propio; recién con el ACK final el servidor sabe que su número inicial llegó. Con dos mensajes el servidor nunca tendría esa confirmación.",
+    "claves": ["Cada lado elige un número de secuencia inicial", "Cada lado necesita confirmar que el otro recibió su número", "El tercer mensaje confirma el número inicial del servidor"],
+    "errores": ["Decir que el tercer mensaje sirve para enviar los primeros datos obligatoriamente"]
+  }
+]

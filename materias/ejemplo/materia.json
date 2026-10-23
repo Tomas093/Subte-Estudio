@@ -1,0 +1,23 @@
+{
+  "titulo": "Redes (ejemplo)",
+  "institucion": "Materia de ejemplo de Subte Estudio",
+  "examen": { "nombre": "Parcial", "fecha": "2030-06-15" },
+  "cuaderno": "",
+  "marco": "",
+  "fases": [
+    { "id": 1, "nombre": "Base", "linea": "A", "color": "#00a0de" },
+    { "id": 2, "nombre": "Transporte", "linea": "B", "color": "#e2231a" }
+  ],
+  "clases": [
+    { "n": 1, "titulo": "Capas y encapsulamiento", "corto": "Capas", "fase": 1, "prioridad": "media",
+      "por_que": "Todo lo demás se explica diciendo en qué capa pasa.", "marco": "", "apunte": null, "video": null, "audio": null },
+    { "n": 2, "titulo": "TCP: conexión y confiabilidad", "corto": "TCP", "fase": 2, "prioridad": "alta",
+      "por_que": "Es la pregunta que siempre aparece en el parcial.", "marco": "", "apunte": null, "video": null, "audio": null }
+  ],
+  "general": [],
+  "plan": [
+    { "fecha": "2030-06-13", "texto": "Clase 1 y Clase 2.", "horas": "~2 h", "clases": [1, 2] },
+    { "fecha": "2030-06-14", "texto": "Repaso de las preguntas marcadas.", "horas": "~1 h", "clases": [] }
+  ],
+  "reglas_correccion": "TCP garantiza entrega ordenada y sin duplicados de un flujo de bytes, no de mensajes; un ACK confirma bytes recibidos, no procesados por la aplicación."
+}
