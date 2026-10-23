@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Subte Estudio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&family=Source+Serif+4:ital,opsz,wght@0,8..60,400..700;1,8..60,400&display=swap">
+<link rel="stylesheet" href="/app/styles.css">
+<style>[hidden]{display:none!important}</style>
+</head>
+<body>
+<header class="band">
+  <div class="wrap gutter band-top">
+    <span class="brand"><span class="disc" aria-hidden="true" id="disc">SE</span><span id="brandName">Subte Estudio</span><select class="materias" id="materiaSel" aria-label="Materia" hidden></select></span>
+    <span class="countdown" id="countdown"></span>
+  </div>
+  <div class="wrap gutter next" id="nextSign"></div>
+</header>
+
+<section class="map" aria-label="Diagrama de la red de clases">
+  <div class="wrap gutter map-inner"><div id="diagram"></div></div>
+  <div class="wrap gutter legend" id="legend"></div>
+</section>
+
+<div class="wrap gutter">
+  <nav class="tabs" role="tablist" aria-label="Secciones">
+    <button role="tab" data-view="ruta" aria-selected="true">Recorrido</button>
+    <button role="tab" data-view="horario" aria-selected="false">Horario hasta el examen</button>
+    <button role="tab" data-view="terminal" aria-selected="false" id="tabTerminal">Terminal</button>
+    <button role="tab" data-view="repaso" aria-selected="false">Para repasar <span id="weakCount"></span></button>
+  </nav>
+  <main>
+    <section id="view-ruta"></section>
+    <section id="view-horario" class="panel timetable" hidden></section>
+    <section id="view-terminal" class="panel terminal" hidden></section>
+    <section id="view-repaso" class="panel repaso" hidden></section>
+    <p class="foot" id="foot">Tu progreso y tus respuestas se guardan en este navegador.</p>
+  </main>
+</div>
+<script src="/app/markdown.js"></script>
+<script src="/app/app.js"></script>
+</body>
+</html>

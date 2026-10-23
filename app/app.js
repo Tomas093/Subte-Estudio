@@ -1,0 +1,304 @@
+/* Subte Estudio: la ruta de una materia como una red de subte. */
+(function () {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const md = s => window.renderMarkdown(s || "");
+  const words = t => (String(t || "").trim().match(/\S+/g) || []).length;
+  const plural = (n, s) => n + " " + s + (n === 1 ? "" : "s");
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  let M = null, S = {}, ST = {}, JUST = 0, KEY = "";
+  const byN = n => M.clases.find(c => +c.n === +n);
+  const fase = c => M.fases.find(f => +f.id === +c.fase) || M.fases[0];
+  const stepIds = c => ["c" + c.n + "-v", "c" + c.n + "-a", "c" + c.n + "-r", "c" + c.n + "-q"];
+  const done = c => stepIds(c).every(id => S[id]);
+  const firstPending = () => (M.clases.find(c => !done(c)) || M.clases[M.clases.length - 1]).n;
+  const current = () => (S.open && byN(S.open) ? S.open : firstPending());
+  const fileUrl = u => (/^https?:/.test(u) ? u : "/materias/" + M.slug + "/" + u);
+
+  /* ---------- color de cada línea ---------- */
+  function luminance(hex) {
+    const n = parseInt(hex.slice(1), 16), c = [n >> 16, (n >> 8) & 255, n & 255].map(v => { v /= 255; return v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4); });
+    return .2126 * c[0] + .7152 * c[1] + .0722 * c[2];
+  }
+  function applyLines() {
+    const root = document.documentElement;
+    for (const f of M.fases) {
+      root.style.setProperty(`--f${f.id}`, f.color);
+      root.style.setProperty(`--f${f.id}-soft`, `color-mix(in srgb, ${f.color} 16%, var(--panel))`);
+      root.style.setProperty(`--f${f.id}-ink`, `color-mix(in srgb, ${f.color} 62%, var(--ink))`);
+      f.on = luminance(f.color) > 0.32 ? "#15191c" : "#ffffff";
+    }
+    if (M.fases[0]) { root.style.setProperty("--la", M.fases[0].color); }
+  }
+  const lc = c => `var(--f${fase(c).id})`;
+  const roundel = (c, cls = "") => `<span class="roundel ${cls}" style="background:${lc(c)};color:${fase(c).on}" aria-hidden="true">${c.n}</span>`;
+  const ICON = {
+    video: '<svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><rect x="1.5" y="3.5" width="17" height="13" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 7.2v5.6l4.6-2.8z" fill="currentColor"/></svg>',
+    audio: '<svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 11v-1a6 6 0 0 1 12 0v1" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="2.5" y="10.5" width="4" height="6" rx="1.5" fill="currentColor"/><rect x="13.5" y="10.5" width="4" height="6" rx="1.5" fill="currentColor"/></svg>',
+    check: '<svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M7 13.5l4 4 8-9" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  };
+
+  /* ---------- estado guardado ---------- */
+  let saveT;
+  function save() { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { } }, 150); }
+
+  /* ---------- diagrama ---------- */
+  function diagram() {
+    const box = $("diagram"), W = box.clientWidth || 900, vertical = W < 640, cur = current();
+    const C = M.clases, nF = M.fases.length;
+    const exam = M.examen || {}, examLabel = exam.fecha ? exam.fecha.slice(8, 10) + "/" + exam.fecha.slice(5, 7) : "Fin";
+    let p = "";
+    const station = (c, x, y, r, labelSvg) => {
+      const d = done(c), on = +c.n === +cur, col = lc(c), anim = d && +c.n === JUST;
+      let g = `<g class="st" tabindex="0" role="button" data-open="${c.n}" aria-label="Clase ${c.n}: ${esc(c.titulo)}${d ? ", completa" : ""}${on ? ", abierta" : ""}">`;
+      if (on) g += `<circle cx="${x}" cy="${y}" r="${r + 7}" fill="none" stroke="var(--ink)" stroke-width="2.5"/>`;
+      g += `<circle class="ring" cx="${x}" cy="${y}" r="${r}" fill="${d && !anim ? col : "var(--panel)"}" stroke="${d ? col : "var(--ink)"}" stroke-width="3.2"/>`;
+      if (anim) g += `<circle class="fillin" cx="${x}" cy="${y}" r="${r}" fill="${col}"/>`;
+      g += d ? `<path d="M${x - 5.5} ${y} l4 4 l7.5 -8" fill="none" stroke="${fase(c).on}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>` : `<text x="${x}" y="${y + 4.5}" text-anchor="middle" font-size="12.5" font-weight="800">${c.n}</text>`;
+      return g + labelSvg(on) + "</g>";
+    };
+    const terminal = (x, y, lx, ly, anchor) => `<g class="st" tabindex="0" role="button" data-view-go="terminal" aria-label="Terminal: ${esc(exam.nombre || "el examen")}"><rect x="${x - 24}" y="${y - 20}" width="48" height="40" rx="10" fill="var(--sign)"/><text x="${x}" y="${y + 5}" text-anchor="middle" font-size="12.5" font-weight="800" style="fill:var(--sign-ink)">${examLabel}</text><text x="${lx}" y="${ly}" text-anchor="${anchor}" font-size="13.5" font-weight="700">${esc(exam.nombre || "Examen")}</text></g>`;
+    if (!vertical) {
+      const w = 1120, gap = 0.35, step = Math.min(96, (w - 150) / (C.length + gap * (nF - 1)));
+      const ys = f => (M.fases.findIndex(x => +x.id === +f) % 2 ? 98 : 62);
+      const pos = c => { const fi = M.fases.findIndex(x => +x.id === +c.fase); return { x: 46 + (C.indexOf(c)) * step + fi * gap * step, y: ys(c.fase) }; };
+      const maxY = 98, h = 158;
+      for (const f of M.fases) { const cs = C.filter(c => +c.fase === +f.id); if (!cs.length) continue; const a = pos(cs[0]), b = pos(cs[cs.length - 1]); p += `<line x1="${a.x - 18}" y1="${a.y}" x2="${b.x + 18}" y2="${b.y}" stroke="var(--f${f.id})" stroke-width="12" stroke-linecap="round"/>`; }
+      for (let k = 1; k < C.length; k++) if (+C[k].fase !== +C[k - 1].fase) { const a = pos(C[k - 1]), b = pos(C[k]); p += `<path d="M${a.x + 18} ${a.y} C ${a.x + 40} ${a.y}, ${b.x - 40} ${b.y}, ${b.x - 18} ${b.y}" fill="none" stroke="var(--ink)" stroke-width="3" stroke-dasharray="2 5" stroke-linecap="round" opacity=".55"/>`; }
+      const last = pos(C[C.length - 1]), T = { x: Math.min(w - 46, last.x + Math.max(90, step * 1.2)), y: last.y };
+      p += `<path d="M${last.x + 18} ${last.y} L ${T.x - 24} ${T.y}" stroke="var(--ink)" stroke-width="3" stroke-dasharray="2 5" stroke-linecap="round" opacity=".55"/>`;
+      p += terminal(T.x, T.y, T.x, T.y + 42, "middle");
+      for (const c of C) { const { x, y } = pos(c); const ly = y === maxY ? y + 42 : y + 40; p += station(c, x, y, 14, on => `<text x="${x}" y="${ly}" text-anchor="middle" font-size="13" font-weight="${on ? 800 : 600}" style="font-stretch:85%">${esc(c.corto || c.titulo)}</text>`); }
+      box.innerHTML = `<svg viewBox="0 0 ${w} ${h}" role="group" aria-label="Recorrido de ${C.length} clases hasta el examen">${p}</svg>`;
+    } else {
+      const w = 360, step = 48, P = {};
+      C.forEach((c, i) => { const fi = M.fases.findIndex(x => +x.id === +c.fase); P[c.n] = { x: fi % 2 ? 64 : 40, y: 30 + i * step + fi * 16 }; });
+      for (const f of M.fases) { const cs = C.filter(c => +c.fase === +f.id); if (!cs.length) continue; const a = P[cs[0].n], b = P[cs[cs.length - 1].n]; p += `<line x1="${a.x}" y1="${a.y - 16}" x2="${b.x}" y2="${b.y + 16}" stroke="var(--f${f.id})" stroke-width="10" stroke-linecap="round"/>`; }
+      const last = P[C[C.length - 1].n], T = { x: 40, y: last.y + 60 };
+      p += terminal(T.x, T.y, T.x + 36, T.y + 5, "start");
+      for (const c of C) { const { x, y } = P[c.n]; p += station(c, x, y, 13, on => `<text x="${x + 30}" y="${y + 5}" font-size="15" font-weight="${on ? 800 : 600}">${esc(c.corto || c.titulo)}</text>`); }
+      box.innerHTML = `<svg viewBox="0 0 ${w} ${T.y + 40}" style="max-width:${w}px" role="group" aria-label="Recorrido de ${C.length} clases hasta el examen">${p}</svg>`;
+    }
+    JUST = 0;
+  }
+
+  /* ---------- cartel y leyenda ---------- */
+  function sign() {
+    const c = byN(firstPending()), allDone = M.clases.every(done), exam = M.examen || {};
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    if (exam.fecha) {
+      const [y, m, d] = exam.fecha.split("-").map(Number), days = Math.round((new Date(y, m - 1, d) - today) / 864e5);
+      $("countdown").innerHTML = days > 0 ? `${esc(exam.nombre || "Examen")} ${d}/${m} · faltan <b>${days}</b> ${days === 1 ? "día" : "días"}` : days === 0 ? `<b>Hoy es el ${esc((exam.nombre || "examen").toLowerCase())}</b>` : esc(exam.nombre || "");
+    } else $("countdown").textContent = "";
+    $("nextSign").innerHTML = allDone
+      ? `<span class="roundel" style="background:var(--sign-ink);color:var(--sign)" aria-hidden="true">${ICON.check}</span><h1><span class="nl">Recorriste las ${M.clases.length} estaciones</span>Seguí hasta la Terminal</h1><button class="go" data-view-go="terminal">Ir a la Terminal</button>`
+      : `${roundel(c)}<h1><span class="nl">Próxima estación</span><span style="white-space:nowrap">Clase ${c.n}</span> · ${esc(c.titulo)}</h1><button class="go" data-open="${c.n}">Abrir estación</button>`;
+    const all = M.clases.flatMap(stepIds), n = all.filter(id => S[id]).length;
+    $("legend").innerHTML = M.fases.map(f => `<span><i style="background:var(--f${f.id})"></i>Línea ${esc(f.linea || f.id)} · ${esc(f.nombre)}</span>`).join("") + `<span>${M.clases.filter(done).length} de ${M.clases.length} estaciones · ${n} de ${all.length} pasos</span>`;
+  }
+
+  /* ---------- estación ---------- */
+  function station() {
+    const c = byN(current()), f = fase(c), ids = stepIds(c);
+    const qs = (c.preguntas || []).map((q, i) => question(c, q, i)).join("");
+    $("view-ruta").innerHTML = `
+    <div class="station" style="--lc:var(--f${f.id})">
+      <article class="panel station-main">
+        <div class="st-head">${roundel(c)}<div><h2>Clase ${c.n} · ${esc(c.titulo)}</h2>
+          <div class="st-meta"><span class="chip">Línea ${esc(f.linea || f.id)} · ${esc(f.nombre)}</span>${c.prioridad === "alta" ? '<span class="chip hot">pesa mucho en el examen</span>' : '<span class="chip">peso medio</span>'}</div></div></div>
+        ${c.por_que ? `<p class="why">${esc(c.por_que)}</p>` : ""}
+        ${c.marco ? `<div class="dline">${esc(c.marco)}</div>` : ""}
+        <h3 class="sec">Resumen de la clase</h3>
+        <div class="read">${md(c.resumen_md) || '<p class="empty">Todavía no hay resumen para esta clase.</p>'}</div>
+        <h3 class="sec">Autoevaluación · ${plural((c.preguntas || []).length, "pregunta")}</h3>
+        <p class="qintro" id="qintro">${introText()}</p>
+        ${qs}
+        <div class="nav-st">${c.n > M.clases[0].n ? `<button data-open="${c.n - 1}">Estación anterior · Clase ${c.n - 1}</button>` : "<span></span>"}${byN(c.n + 1) ? `<button data-open="${c.n + 1}">Próxima estación · Clase ${c.n + 1}</button>` : `<button data-view-go="terminal">Ir a la Terminal</button>`}</div>
+      </article>
+      <aside class="panel rail" aria-label="Pasos de la estación">
+        <h3>Pasos en esta estación</h3>
+        <ol class="stops">
+          ${c.video ? `<li><input type="checkbox" id="${ids[0]}"><label for="${ids[0]}">Ver el video<small>${esc(c.video.duracion || "")}</small></label></li>` : `<li><input type="checkbox" id="${ids[0]}"><label for="${ids[0]}">Repasar las diapositivas</label></li>`}
+          ${c.audio ? `<li><input type="checkbox" id="${ids[1]}"><label for="${ids[1]}">Escuchar el audio<small>${esc(c.audio.duracion || "")}</small></label></li>` : `<li><input type="checkbox" id="${ids[1]}"><label for="${ids[1]}">Leer el apunte</label></li>`}
+          <li><input type="checkbox" id="${ids[2]}"><label for="${ids[2]}">Leer el resumen<small>en esta página</small></label></li>
+          <li><input type="checkbox" id="${ids[3]}"><label for="${ids[3]}">Responder la autoevaluación<small>${plural((c.preguntas || []).length, "pregunta")}</small></label></li>
+        </ol>
+        <div class="media">
+          ${c.video ? `<a href="${esc(c.video.url)}" target="_blank" rel="noopener">${ICON.video}<span>${esc(c.video.titulo)}<small>Video · ${esc(c.video.duracion || "")}</small></span></a>` : ""}
+          ${c.audio ? `<a href="${esc(c.audio.url)}" target="_blank" rel="noopener">${ICON.audio}<span>${esc(c.audio.titulo)}<small>Audio · ${esc(c.audio.duracion || "")}</small></span></a>` : ""}
+        </div>
+        ${c.apunte ? `<a class="pdf" href="${esc(fileUrl(c.apunte))}" target="_blank" rel="noopener">Apunte completo de la clase (PDF)</a>` : ""}
+      </aside>
+    </div>`;
+    refreshChecks(); refreshQuestions(c);
+  }
+  function question(c, q, i) {
+    const k = "h" + c.n + "-" + i, draft = S["a-" + k] || "";
+    return `<div class="q" id="q-${k}"><div class="q-head"><span class="q-n">${i + 1}/${c.preguntas.length}</span><p class="q-text">${esc(q.pregunta)}</p></div>
+    <div class="q-body">
+      <textarea id="ta-${k}" data-draft="${k}" aria-label="Tu respuesta a la pregunta ${i + 1}" placeholder="Tu respuesta… (o dictala)">${esc(draft)}</textarea>
+      <div class="q-actions">
+        <button class="btn rec" data-rec="${k}" aria-pressed="false" ${ST.transcripcion ? "" : "hidden"}><span class="dot" aria-hidden="true"></span><span>Dictar</span></button>
+        <button class="btn primary" data-grade="${k}" ${ST.corrector ? "" : "hidden"}>Corregir</button>
+        <button class="btn" data-ref="${k}" aria-expanded="false" ${words(draft) < 8 && !S["u-" + k] ? "disabled" : ""}>Ver respuesta de referencia</button>
+        <button class="btn ghost" data-dunno="${k}">No la sé</button>
+        <span class="words" id="w-${k}"></span></div>
+      <div id="out-${k}"></div>
+      <div class="ref" id="ref-${k}" hidden><b>Respuesta de referencia</b>${esc(q.referencia)}</div>
+      <div class="rate" role="group" aria-label="¿Cómo te fue?">¿Cómo te fue?<button data-rate="${k}" data-v="0" aria-pressed="false">No la sabía</button><button data-rate="${k}" data-v="1" aria-pressed="false">A medias</button><button data-rate="${k}" data-v="2" aria-pressed="false">Bien</button></div>
+    </div></div>`;
+  }
+  function introText() {
+    return ST.corrector
+      ? "Escribí o dictá tu respuesta como en el examen. Después corregila: el corrector revisa punto por punto qué ideas cubriste y qué te faltó."
+      : "Escribí o dictá tu respuesta como en el examen. Después comparala con la respuesta de referencia y calificate.";
+  }
+  function refreshQuestions(c) {
+    (c.preguntas || []).forEach((q, i) => {
+      const k = "h" + c.n + "-" + i, w = $("w-" + k);
+      if (w) { const n = words(S["a-" + k]); w.textContent = n ? n + " palabras" : ""; }
+      if (S["g-" + k]) renderVerdict(k, S["g-" + k]);
+      document.querySelectorAll(`[data-rate="${k}"]`).forEach(b => b.setAttribute("aria-pressed", String(S["r-" + k] === +b.dataset.v)));
+    });
+  }
+  function refreshChecks() { document.querySelectorAll(".stops input,.steps-plain input").forEach(i => { i.checked = !!S[i.id]; }); }
+
+  /* ---------- corrección ---------- */
+  async function grade(k, btn) {
+    const [cn, i] = k.slice(1).split("-").map(Number), out = $("out-" + k), ans = (S["a-" + k] || "").trim();
+    if (words(ans) < 8) { out.innerHTML = `<p class="thinking">Escribí una respuesta un poco más completa antes de corregirla.</p>`; return; }
+    btn.disabled = true; out.innerHTML = `<p class="thinking">Corrigiendo…</p>`;
+    try {
+      const r = await fetch("/api/corregir", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ materia: M.slug, clase: cn, i, respuesta: ans }) });
+      const g = await r.json();
+      if (!r.ok) throw new Error(g.error || "No se pudo corregir.");
+      S["g-" + k] = g; S["r-" + k] = g.veredicto; save(); renderVerdict(k, g);
+      document.querySelectorAll(`[data-rate="${k}"]`).forEach(b => b.setAttribute("aria-pressed", String(g.veredicto === +b.dataset.v)));
+      weakCount();
+    } catch (e) { out.innerHTML = `<p class="thinking">${esc(e.message)}</p>`; }
+    finally { btn.disabled = false; }
+  }
+  function renderVerdict(k, g) {
+    const out = $("out-" + k); if (!out) return;
+    const T = ["Mal, repasala", "A medias", "Bien"], L = { presente: "está", parcial: "a medias", ausente: "falta" };
+    const claves = (g.claves || []).map(c => `<li class="${c.estado}"><span class="mk">${L[c.estado] || c.estado}</span><span>${esc(c.texto)}${c.comentario ? `<small>${esc(c.comentario)}</small>` : ""}</span></li>`).join("");
+    out.innerHTML = `<div class="verdict v${g.veredicto}"><h4>${T[g.veredicto]} · ${g.puntaje}/10</h4><p>${esc(g.devolucion)}</p>${claves ? `<span class="lab">Puntos clave</span><ul class="claves">${claves}</ul>` : ""}${(g.errores || []).length ? `<span class="lab">Errores</span><ul>${g.errores.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}</div>`;
+  }
+
+  /* ---------- dictado ---------- */
+  let rec = null;
+  async function toggleRec(k, btn) {
+    if (rec && rec.k === k) { rec.mr.stop(); return; }
+    if (rec) return;
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+    catch (e) { $("out-" + k).innerHTML = `<p class="thinking">No pude usar el micrófono. Revisá el permiso del navegador.</p>`; return; }
+    const mr = new MediaRecorder(stream), chunks = [];
+    rec = { k, mr };
+    btn.setAttribute("aria-pressed", "true"); btn.lastElementChild.textContent = "Detener";
+    mr.ondataavailable = e => e.data.size && chunks.push(e.data);
+    mr.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop()); rec = null;
+      btn.setAttribute("aria-pressed", "false"); btn.lastElementChild.textContent = "Transcribiendo…"; btn.disabled = true;
+      try {
+        const blob = new Blob(chunks, { type: mr.mimeType || "audio/webm" });
+        const r = await fetch("/api/transcribir", { method: "POST", headers: { "Content-Type": blob.type }, body: blob });
+        const d = await r.json(); if (!r.ok) throw new Error(d.error || "No se pudo transcribir.");
+        const ta = $("ta-" + k); ta.value = (ta.value.trim() ? ta.value.trim() + " " : "") + d.texto.trim();
+        ta.dispatchEvent(new Event("input", { bubbles: true }));
+      } catch (e) { $("out-" + k).innerHTML = `<p class="thinking">${esc(e.message)}</p>`; }
+      finally { btn.disabled = false; btn.lastElementChild.textContent = "Dictar"; }
+    };
+    mr.start();
+  }
+
+  /* ---------- horario, terminal, repaso ---------- */
+  function horario() {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const label = s => { const [y, m, d] = s.split("-").map(Number), dt = new Date(y, m - 1, d); return { dt, txt: ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"][dt.getDay()] + " " + d + "/" + m }; };
+    const rows = (M.plan || []).map(p => {
+      const { dt, txt } = label(p.fecha), cls = dt.getTime() === today.getTime() ? "today" : dt < today ? "past" : "";
+      const sts = (p.clases || []).map(n => { const c = byN(n); return c ? `<button data-open="${n}" class="${done(c) ? "done" : ""}">${roundel(c)}${esc(c.corto || c.titulo)}</button>` : ""; }).join("");
+      return `<tr class="${cls} ${p.libre ? "off" : ""}"><td class="d">${txt}</td><td>${esc(p.texto)}${sts ? `<div class="sts">${sts}</div>` : ""}</td><td class="h">${esc(p.horas || "")}</td></tr>`;
+    }).join("");
+    $("view-horario").innerHTML = `<h2>Horario hasta el examen</h2>` + (rows ? `<div class="tt-wrap"><table class="tt"><thead><tr><th>Día</th><th>Qué hacer</th><th>Tiempo</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p class="empty">Esta materia todavía no tiene un plan por días. Agregalo en el campo "plan" de materia.json.</p>`);
+  }
+  function terminal() {
+    const exam = M.examen || {};
+    $("view-terminal").innerHTML = `<h2>Terminal: ${esc(exam.nombre || "el examen")}</h2><p class="lead">Cuando termines las estaciones, integrá todo con el material general y practicá en formato real.</p>
+    <ul class="board">${(M.general || []).map(g => `<li><span class="k">${esc(g.etiqueta)}</span><div><a href="${esc(fileUrl(g.url))}" target="_blank" rel="noopener">${esc(g.titulo)}</a>${g.nota ? `<p>${esc(g.nota)}</p>` : ""}</div></li>`).join("")}
+    ${M.cuaderno ? `<li><span class="k">Cuaderno completo</span><div><a href="${esc(M.cuaderno)}" target="_blank" rel="noopener">Abrir NotebookLM</a><p>Para hacerle preguntas al material.</p></div></li>` : ""}</ul>
+    ${M.como_responder_md ? `<details class="howto" open><summary>Cómo responder el examen</summary><div class="read">${md(M.como_responder_md)}</div></details>` : ""}`;
+  }
+  const weakList = () => { const w = []; for (const c of M.clases) (c.preguntas || []).forEach((q, i) => { const v = S["r-h" + c.n + "-" + i]; if (v === 0 || v === 1) w.push({ c, q, i, v }); }); return w; };
+  function weakCount() { const n = weakList().length; $("weakCount").textContent = n ? `· ${n}` : ""; }
+  function repaso() {
+    const w = weakList();
+    $("view-repaso").innerHTML = `<h2>Para repasar</h2><p class="lead">Las preguntas que marcaste o que el corrector puso como "No la sabía" o "A medias". Volvé a escuchar el audio de esa clase y respondelas de nuevo al otro día.</p>` +
+      (w.length ? `<ul class="weak">${w.map(x => `<li>${roundel(x.c)}<div><span class="tag t${x.v}">${x.v === 0 ? "No la sabías" : "A medias"} · Clase ${x.c.n}</span><b>${esc(x.q.pregunta)}</b><div class="acts"><button data-goq="h${x.c.n}-${x.i}">Responder de nuevo</button>${x.c.audio ? `<a href="${esc(x.c.audio.url)}" target="_blank" rel="noopener">Escuchar el audio</a>` : ""}</div></div></li>`).join("")}</ul>`
+        : `<p class="empty">Todavía no hay preguntas para repasar. Respondé la autoevaluación de una estación y calificá cada respuesta.</p>`);
+  }
+
+  /* ---------- navegación ---------- */
+  function show(view) {
+    document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.view === view)));
+    for (const v of ["ruta", "horario", "terminal", "repaso"]) $("view-" + v).hidden = v !== view;
+    if (view === "horario") horario(); if (view === "terminal") terminal(); if (view === "repaso") repaso();
+    S.view = view; save();
+  }
+  function open(n, to) {
+    S.open = +n; save(); show("ruta"); station(); diagram();
+    const t = to ? $(to) : document.querySelector(".tabs"); if (t) t.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+  }
+  document.addEventListener("click", e => {
+    const t = e.target.closest("button,[data-open],[data-view-go]"); if (!t || !M) return;
+    if (t.dataset.view) return show(t.dataset.view);
+    if (t.dataset.open) return open(t.dataset.open);
+    if (t.dataset.viewGo) { show(t.dataset.viewGo); document.querySelector(".tabs").scrollIntoView({ block: "start" }); return; }
+    if (t.dataset.ref) { const r = $("ref-" + t.dataset.ref); r.hidden = !r.hidden; t.setAttribute("aria-expanded", String(!r.hidden)); t.textContent = r.hidden ? "Ver respuesta de referencia" : "Ocultar respuesta de referencia"; return; }
+    if (t.dataset.rate) { const k = "r-" + t.dataset.rate, v = +t.dataset.v; S[k] = S[k] === v ? undefined : v; save(); document.querySelectorAll(`[data-rate="${t.dataset.rate}"]`).forEach(b => b.setAttribute("aria-pressed", String(S[k] === +b.dataset.v))); weakCount(); return; }
+    if (t.dataset.grade) return grade(t.dataset.grade, t);
+    if (t.dataset.rec) return toggleRec(t.dataset.rec, t);
+    if (t.dataset.dunno) {
+      const k = t.dataset.dunno; S["r-" + k] = 0; S["u-" + k] = 1; save(); $("ref-" + k).hidden = false;
+      const rb = document.querySelector(`[data-ref="${k}"]`); if (rb) { rb.disabled = false; rb.setAttribute("aria-expanded", "true"); rb.textContent = "Ocultar respuesta de referencia"; }
+      document.querySelectorAll(`[data-rate="${k}"]`).forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.v === 0))); weakCount(); return;
+    }
+    if (t.dataset.goq) { const n = +t.dataset.goq.slice(1).split("-")[0]; return open(n, "q-" + t.dataset.goq); }
+  });
+  document.addEventListener("keydown", e => { if ((e.key === "Enter" || e.key === " ") && e.target.matches(".st")) { e.preventDefault(); e.target.dispatchEvent(new MouseEvent("click", { bubbles: true })); } });
+  document.addEventListener("change", e => {
+    if (e.target.id === "materiaSel") { location.search = "?m=" + e.target.value; return; }
+    if (e.target.matches(".stops input,.steps-plain input")) {
+      const c = byN(+((e.target.id.match(/^c(\d+)-/) || [])[1] || 0)), was = c ? done(c) : false;
+      S[e.target.id] = e.target.checked; save(); if (c && !was && done(c)) JUST = c.n; sign(); diagram();
+    }
+  });
+  document.addEventListener("input", e => {
+    const k = e.target.dataset.draft; if (!k) return;
+    S["a-" + k] = e.target.value; save();
+    const n = words(e.target.value), w = $("w-" + k); if (w) w.textContent = n ? n + " palabras" : "";
+    const rb = document.querySelector(`[data-ref="${k}"]`); if (rb && !S["u-" + k]) rb.disabled = n < 8;
+  });
+  let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => M && diagram(), 120); });
+
+  /* ---------- arranque ---------- */
+  async function boot() {
+    const [lista, estado] = await Promise.all([fetch("/api/materias").then(r => r.json()), fetch("/api/estado").then(r => r.json()).catch(() => ({}))]);
+    ST = estado || {};
+    if (!lista.length) { $("view-ruta").innerHTML = `<div class="panel station-main"><p>No hay materias en la carpeta <code>materias/</code>. Creá una con el flujo de agentes del README.</p></div>`; return; }
+    const want = new URLSearchParams(location.search).get("m"), slug = (lista.find(m => m.slug === want) || lista.find(m => m.slug !== "ejemplo") || lista[0]).slug;
+    if (lista.length > 1) { $("materiaSel").hidden = false; $("materiaSel").innerHTML = lista.map(m => `<option value="${m.slug}" ${m.slug === slug ? "selected" : ""}>${esc(m.titulo)}</option>`).join(""); }
+    M = await fetch("/api/materia/" + slug).then(r => r.json());
+    KEY = "subte-" + slug; try { S = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { S = {}; }
+    document.title = M.titulo + " · Subte Estudio";
+    $("brandName").textContent = "Red de estudio · " + M.titulo; $("disc").textContent = (M.titulo.match(/\p{L}+/gu) || ["S"]).map(w => w[0]).join("").slice(0, 2).toUpperCase();
+    $("tabTerminal").textContent = "Terminal: " + ((M.examen && M.examen.nombre) || "examen").toLowerCase();
+    $("foot").textContent = "Tu progreso y tus respuestas se guardan en este navegador." + (ST.corrector ? ` Corrector: ${ST.proveedor === "gemini" ? "Gemini" : "Ollama · " + ST.modelo}.` : " Corrector apagado: revisá Ollama o la configuración.");
+    applyLines(); sign(); station(); diagram(); weakCount();
+    if (S.view && S.view !== "ruta") show(S.view);
+  }
+  boot();
+})();
