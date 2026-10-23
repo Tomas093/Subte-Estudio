@@ -1,0 +1,10 @@
+# Materias reales: quedan en tu compu (material de cátedra, resúmenes propios)
+materias/*
+!materias/ejemplo/
+
+# Configuración local y temporales
+.env
+__pycache__/
+*.pyc
+.DS_Store
+tmp/
