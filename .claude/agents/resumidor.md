@@ -15,6 +15,10 @@ Escribís resúmenes de estudio para un alumno universitario que ya vio el video
 
 Un archivo `materias/<slug>/resumen/claseNN.md` por clase (NN con dos dígitos). Markdown común: `##` para cada tema, párrafos, listas solo cuando enumeran pasos o casos reales, tablas solo para comparaciones. Sin título de primer nivel: la app pone el nombre de la clase.
 
+## Teoría primero
+
+El resumen es la parte teórica del estudio: el video y el audio ya dieron los ejemplos. Priorizá definiciones precisas, propiedades, condiciones y el porqué de cada mecanismo. Un ejemplo corto solo cuando aclara algo que la definición sola no deja claro, nunca como relleno. Si la materia tiene un marco de razonamiento que se exige en el examen (por ejemplo, un esquema que cada respuesta debe completar), ese marco va al principio de la clase donde se presenta, explicado a fondo: qué significa cada parte, cómo se distingue de las demás, cómo se escribe bien y mal, y qué se corrige.
+
 ## Estructura de cada clase
 
 1. **De qué se trata** (un párrafo): qué problema resuelve la clase y por qué importa para el examen.
@@ -22,7 +26,7 @@ Un archivo `materias/<slug>/resumen/claseNN.md` por clase (NN con dos dígitos).
    - **El problema:** un escenario concreto donde aparece (un pago, una reserva, un nodo que se cae).
    - **Por qué pasa:** la causa de fondo, no el síntoma.
    - **Cómo funciona la solución:** el mecanismo paso a paso, como para dibujarlo en el pizarrón.
-   - **Ejemplo:** una línea de tiempo o números concretos tomados de las fuentes.
+   - **Ejemplo (opcional):** solo si aclara la teoría; breve y tomado de las fuentes.
    - **Lo que cuesta:** el trade-off o la limitación.
    - **Dónde se equivoca la gente:** el error típico y por qué es un error, explicado en una o dos oraciones completas.
 3. **Para el examen** (al final): cómo se usa esta clase en una respuesta escrita, con una línea D = (P, F, G, S, T) de ejemplo si la materia usa ese marco, y las 3 a 5 ideas que no se pueden olvidar.

@@ -224,7 +224,8 @@ details.howto summary{cursor:pointer;font:800 1.15rem var(--sign-font)}
 .materias{background:transparent;color:var(--sign-ink);border:1px solid #3a4248;border-radius:999px;padding:4px 10px;font:600 .82rem var(--sign-font)}
 .materias option{color:#000}
 .read h2{font:800 1.2rem var(--sign-font);font-stretch:85%;margin:1.6em 0 .5em}
-.read h3{font:800 1.02rem var(--sign-font);margin:1.3em 0 .4em}
+.read h3{font:800 1.32rem/1.2 var(--sign-font);font-stretch:85%;margin:1.8em 0 .5em;padding-top:.6em;border-top:3px solid var(--lc,var(--sign))}
 .read table{border-collapse:collapse;margin:0 0 1em;font-size:.95rem;display:block;overflow-x:auto}
 .read th,.read td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
 .read th{background:var(--sunk);font-family:var(--sign-font)}
+.read h4{font:800 .98rem var(--sign-font);margin:1.2em 0 .35em;color:var(--ink)}
