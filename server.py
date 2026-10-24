@@ -18,6 +18,7 @@ import sys
 import tempfile
 import threading
 import time
+import unicodedata
 import wave
 from concurrent.futures import ThreadPoolExecutor
 import urllib.error
@@ -209,8 +210,9 @@ ESQUEMA = {
     "type": "object",
     "properties": {
         "claves": {"type": "array", "items": {"type": "object", "properties": {
-            "n": {"type": "integer"}, "estado": {"type": "string", "enum": ["presente", "parcial", "ausente"]},
-            "dijiste": {"type": "string"}, "falta": {"type": "string"}}, "required": ["n", "estado", "dijiste", "falta"]}},
+            "n": {"type": "integer"}, "dijiste": {"type": "string"},
+            "estado": {"type": "string", "enum": ["presente", "parcial", "ausente"]},
+            "falta": {"type": "string"}}, "required": ["n", "dijiste", "estado", "falta"]}},
         "errores": {"type": "array", "items": {"type": "object", "properties": {
             "dijiste": {"type": "string"}, "correcto": {"type": "string"}}, "required": ["dijiste", "correcto"]}},
     },
@@ -247,18 +249,20 @@ El array "claves" en el JSON DEBE tener EXACTAMENTE {num_claves} elementos:
 NO cambies el orden ni omitas ningún punto.
 
 CRITERIOS DE EVALUACIÓN:
-1. PUNTOS CLAVE:
-   - "presente": el alumno comprende la idea central y la expresa correctamente (con sus palabras, ejemplos válidos o lenguaje coloquial).
-   - "parcial": la idea está presente pero falta una distinción conceptual importante o quedó a medias.
-   - "ausente": no se menciona o está conceptualmente equivocada.
-2. Para cada punto "parcial" o "ausente" completá dos campos. Si está "presente", dejá los dos vacíos ("").
-   - "dijiste": qué escribió el alumno sobre ese punto, citando o parafraseando su respuesta en hasta 20 palabras. Si no lo mencionó, escribí exactamente "No lo mencionaste."
-   - "falta": una oración completa, de 12 a 30 palabras, que diga qué le faltó o qué quedó mal y cómo se dice bien, con un verbo y nombrando la parte de la respuesta a la que se refiere (por ejemplo, la F de la línea D). Tiene que entenderse sin ver el punto clave.
+1. PUNTOS CLAVE. Para cada punto completá los campos EN ESTE ORDEN: primero "dijiste", después "estado", después "falta".
+   - "dijiste": copiá la frase de la respuesta del alumno que habla de ese punto, tal cual (hasta 20 palabras). La frase tiene que tratar el MISMO tema que el punto; una frase sobre otro tema no cuenta. Si ninguna frase lo toca, escribí exactamente "No lo mencionaste.".
+   - "estado", decidido SOLO con lo que quedó en "dijiste":
+     - "presente": la frase expresa la idea del punto, aunque sea breve, coloquial o con otras palabras. Nombrar el concepto o dar un ejemplo correcto de él alcanza.
+     - "parcial": la frase expresa la idea pero omite UN elemento concreto y nombrable del punto (por ejemplo, un punto con dos ideas unidas y el alumno dijo solo una). No es parcial por falta de detalle, de precisión o de las palabras exactas del punto.
+     - "ausente": "dijiste" es "No lo mencionaste." o la frase afirma lo contrario del punto.
+   - Si no podés nombrar un elemento concreto que el alumno NO dijo, el estado es "presente". Está prohibido marcar "parcial" por duda.
+   - "falta": solo si el estado no es "presente"; si es "presente", dejalo vacío (""). Una oración completa de 12 a 30 palabras que diga qué elemento no apareció y cómo se dice bien, con un verbo y nombrando la parte de la respuesta a la que se refiere (por ejemplo, la F de la línea D). Tiene que entenderse sin ver el punto clave.
      Mal: "reintento del cliente y respuesta perdida".
      Bien: "En la F nombraste solo la caída del servidor; faltó incluir que el cliente reintenta y que la respuesta del servidor se puede perder."
+   - "falta" NO puede nombrar nada que ya esté en la respuesta del alumno: nombra solo lo que no dijo. Si lo que ibas a escribir ya está en "dijiste", el estado es "presente".
    - El alumno no ve los puntos clave numerados: nunca digas "punto 1" ni inventes rótulos como "en la A". Nombrá la idea con palabras ("en la ejecución donde se pierde la respuesta") o una letra de la línea D si el alumno la escribió (P, F, G, S, T).
    - PROHIBIDO generar contradicciones lógicas. Si el alumno mencionó el concepto con sinónimos, marcalo "presente".
-3. "errores": lista de AFIRMACIONES TÉCNICAMENTE FALSAS hechas por el alumno.
+2. "errores": lista de AFIRMACIONES TÉCNICAMENTE FALSAS hechas por el alumno.
    ATENCIÓN ESTRICTA:
    - Si el alumno no hizo ninguna afirmación técnicamente falsa, devolvé "errores": [].
    - NO inventes errores. Paráfrasis, ejemplos válidos o detalles adicionales (como distinguir seguridad y progreso) NO son errores.
@@ -284,7 +288,7 @@ ERRORES FRECUENTES QUE INVALIDAN:
 RESPUESTA DEL ALUMNO:
 {respuesta}
 
-Respondé solo con JSON: {{"claves":[{{"n":1,"estado":"presente|parcial|ausente","dijiste":"...","falta":"..."}}],"errores":[{{"dijiste":"...","correcto":"..."}}]}}"""
+Respondé solo con JSON: {{"claves":[{{"n":1,"dijiste":"...","estado":"presente|parcial|ausente","falta":"..."}}],"errores":[{{"dijiste":"...","correcto":"..."}}]}}"""
 
 
 ESQUEMA_REPASO = {
@@ -365,6 +369,49 @@ def parse_json(txt):
         return json.loads(txt[a:b + 1])
 
 
+ESQUEMA_VERIF = {
+    "type": "object",
+    "properties": {"cita": {"type": "string"}, "cubre": {"type": "string", "enum": ["todo", "parte", "nada"]}},
+    "required": ["cita", "cubre"],
+}
+
+
+def prompt_verificacion(clave, falta, respuesta):
+    return f"""Verificás una corrección de examen. Un corrector automático marcó este punto como incompleto y afirmó que al alumno le faltó esto:
+
+IDEA DEL PUNTO: {clave}
+AFIRMACIÓN DEL CORRECTOR: {falta}
+
+RESPUESTA DEL ALUMNO (dictada por voz; ignorá titubeos):
+{respuesta}
+
+Decidí cuánto de la IDEA DEL PUNTO dice la respuesta del alumno, aunque sea con otras palabras o de forma breve.
+- "cita": la frase de la respuesta que dice esa idea, copiada tal cual. Si ninguna frase trata ese tema, "".
+- "cubre": "todo" si la cita expresa la idea completa; "parte" si expresa una parte concreta pero omite otra; "nada" si ninguna frase trata el tema del punto (hablar de otro tema no cuenta).
+Respondé solo con JSON: {{"cita":"...","cubre":"todo|parte|nada"}}"""
+
+
+def normalizar(t):
+    t = unicodedata.normalize("NFD", str(t or "").lower())
+    t = "".join(c for c in t if unicodedata.category(c) != "Mn")
+    return " ".join(re.sub(r"[^\w\s]", " ", t).split())
+
+
+def recalificar_parcial(clave, falta, respuesta, proveedor):
+    """Segunda pasada sobre un punto 'parcial': devuelve 'presente', 'parcial' o 'ausente'.
+    Subir a 'presente' exige una cita que exista en la respuesta; sin cita válida se queda en 'parcial'."""
+    try:
+        d = parse_json(llamar_modelo(prompt_verificacion(clave, falta, respuesta), proveedor, ESQUEMA_VERIF))
+    except Exception:
+        return "parcial"
+    if d.get("cubre") == "nada":
+        return "ausente"
+    cita = normalizar(d.get("cita"))
+    if d.get("cubre") == "todo" and len(cita.split()) >= 2 and cita in normalizar(respuesta):
+        return "presente"
+    return "parcial"
+
+
 ELOGIO = re.compile(r"^\s*(muy bien|bien|buen[oa]?|excelente|correcto|perfecto|genial)\b[^.]*\.\s*", re.I)
 
 
@@ -384,6 +431,8 @@ def corregir(slug, n, i, respuesta, proveedor=None, qid=None):
     for k, texto in enumerate(claves, 1):
         c = estados.get(k, {})
         estado = c.get("estado") if c.get("estado") in ("presente", "parcial", "ausente") else "ausente"
+        if estado == "parcial":
+            estado = recalificar_parcial(texto, corto(c.get("falta"), 300), respuesta, proveedor)
         puntos += {"presente": 1, "parcial": 0.5}.get(estado, 0)
         dijiste = falta = ""
         if estado != "presente":
