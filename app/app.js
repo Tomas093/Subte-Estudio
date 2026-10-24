@@ -498,7 +498,7 @@
       document.querySelectorAll(`[data-rate="${k}"]`).forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.v === 0))); weakCount(); finRender(kq(k).c); return;
     }
     if (t.dataset.notas) return notas(t.dataset.notas, t.dataset.n);
-    if (t.dataset.escuchar) return Lector.empezar({ read: document.querySelector("#view-ruta .read"), slug: M.slug, gemini: !!ST.voz_gemini, voces: ST.voces, vozDef: ST.voz });
+    if (t.dataset.escuchar) return Lector.empezar({ read: document.querySelector("#view-ruta .read"), slug: M.slug, gemini: !!ST.voz_gemini, voces: ST.voces, vozDef: ST.voz, clases: M.clases, md });
     if (t.dataset.donde) return irDonde(t.dataset.dondeC, t.dataset.donde);
     if (t.dataset.fin) return armarFin(byN(t.dataset.fin));
     if (t.dataset.gofin) return open(t.dataset.gofin, "fin-" + t.dataset.gofin);

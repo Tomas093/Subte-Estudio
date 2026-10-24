@@ -135,6 +135,52 @@
     const j = L.ps.findIndex(p => p.els.includes(el)); L.i = j < 0 ? 0 : j;
   }
 
+  /* ---------- precarga del audio de Gemini ----------
+     Al empezar se le pide al servidor que genere todos los párrafos de la clase en segundo plano,
+     empezando por donde estás. Sigue aunque cierres el lector, mientras el servidor esté prendido. */
+  const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error || "Error"); return d; });
+  async function lote(textos, todas) {
+    try { const d = await post("/api/voz/lote", { materia: L.slug, voz: pref.vozGemini || L.vozDef, textos }); L.lotes[d.id] = d; if (todas) L.todas = true; sondear(); }
+    catch (e) { audioEstado(`No se pudo preparar el audio: ${esc(e.message)}`); }
+  }
+  function prepararClase() {
+    if (!L || L.motor !== "gemini") return;
+    lote([...L.ps.slice(L.i), ...L.ps.slice(0, L.i)].map(p => p.t), false);
+  }
+  async function prepararTodas() {
+    if (!L || L.motor !== "gemini") return;
+    const tmp = document.createElement("div");
+    for (const c of L.clases) {
+      if (!c.resumen_md) continue;
+      tmp.innerHTML = L.md(c.resumen_md);
+      await lote(piezas(bloques(tmp), "gemini").map(p => p.t), true);
+    }
+  }
+  function cancelarLotes() {
+    for (const id of Object.keys(L.lotes)) fetch(`/api/voz/lote/${id}/cancelar`, { method: "POST" }).catch(() => { });
+    L.lotes = {}; L.todas = false; audioEstado("");
+  }
+  let sondeoT = null;
+  function sondear() {
+    clearTimeout(sondeoT);
+    sondeoT = setTimeout(async () => {
+      if (!L) return;
+      const ids = Object.keys(L.lotes);
+      await Promise.all(ids.map(id => fetch("/api/voz/lote/" + id).then(r => r.ok ? r.json() : null).then(d => { if (d && L && L.lotes[id]) L.lotes[id] = d; }).catch(() => { })));
+      if (!L) return;
+      const ls = Object.values(L.lotes), hechos = ls.reduce((a, x) => a + x.hechos, 0), total = ls.reduce((a, x) => a + x.total, 0);
+      const err = ls.find(x => x.error), quien = L.todas ? "de todas las clases" : "de la clase";
+      if (err) audioEstado(`No se pudo preparar todo el audio: ${esc(err.error)}`);
+      else if (hechos >= total) audioEstado(`Audio ${quien} listo`, true);
+      else audioEstado(`Preparando el audio ${quien}: ${hechos} de ${total}` + (ls.some(x => x.esperando) ? " · Gemini pidió esperar un poco, sigue solo" : ""));
+      if (!err && hechos < total) sondear();
+    }, 1500);
+  }
+  function audioEstado(txt, listo) {
+    const s = bar && bar.querySelector(".l-audio"); if (!s) return;
+    s.innerHTML = txt; s.classList.toggle("ok", !!listo);
+  }
+
   /* ---------- barra ---------- */
   function estado(html) { const s = bar && bar.querySelector(".l-estado"); if (s) s.innerHTML = html; }
   function pintar() {
@@ -146,6 +192,7 @@
     bar.querySelector(".l-pos").textContent = `${bloqueN} de ${L.bs.length}`;
     const mot = bar.querySelector(".l-motor");
     mot.innerHTML = (L.gemini ? `<option value="gemini" ${L.motor === "gemini" ? "selected" : ""}>Voz de Gemini</option>` : "") + (SY ? `<option value="sistema" ${L.motor !== "gemini" ? "selected" : ""}>Voz del sistema</option>` : "");
+    const td = bar.querySelector(".l-todas"); td.hidden = L.motor !== "gemini" || L.todas || L.clases.length < 2;
     const vz = bar.querySelector(".l-voz");
     if (L.motor === "gemini") vz.innerHTML = L.voces.map(v => `<option ${v === (pref.vozGemini || L.vozDef) ? "selected" : ""}>${esc(v)}</option>`).join("");
     else vz.innerHTML = vs.length ? vs.map(v => `<option value="${esc(v.name)}" ${sis && v.name === sis.name ? "selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("") : `<option>No hay voces en español instaladas</option>`;
@@ -163,6 +210,8 @@
       <select class="l-motor" aria-label="Motor de voz"></select>
       <select class="l-voz" aria-label="Voz"></select>
       <button class="l-btn" data-lector="cerrar" aria-label="Cerrar el lector">Cerrar</button>
+      <span class="l-audio" aria-live="polite"></span>
+      <button class="lk l-todas" data-lector="todas">Preparar el audio de todas las clases</button>
       <span class="l-estado" aria-live="polite"></span>
       <span class="l-tip">Tocá cualquier párrafo para leer desde ahí.</span></div>`;
     document.body.appendChild(bar); document.body.classList.add("con-lector");
@@ -174,38 +223,42 @@
       if (k === "sig") bloque(1);
       if (k === "cerrar") parar();
       if (k === "sistema") { cambiarMotor("sistema"); play(); }
+      if (k === "todas") { a.hidden = true; prepararTodas(); }
     });
     bar.addEventListener("change", e => {
       if (e.target.matches(".l-vel")) { L.vel = pref.vel = +e.target.value; guardarPref(); audio.playbackRate = L.vel; if (L.sonando && L.motor !== "gemini") { cortarTodo(); decir(); } }
       if (e.target.matches(".l-motor")) { const s = L.sonando; cambiarMotor(e.target.value); if (s) play(); }
       if (e.target.matches(".l-voz")) {
         if (L.motor === "gemini") pref.vozGemini = e.target.value; else pref.vozSistema = e.target.value;
-        guardarPref(); L.cache.clear(); if (L.sonando) { cortarTodo(); decir(); }
+        guardarPref(); L.cache.clear();
+        if (L.motor === "gemini") { const todas = L.todas; cancelarLotes(); prepararClase(); if (todas) prepararTodas(); }
+        if (L.sonando) { cortarTodo(); decir(); }
       }
     });
     pintar();
   }
-  function cambiarMotor(m) { cortarTodo(); L.sonando = false; L.enPausa = -1; L.motor = pref.motor = m; guardarPref(); rearmar(); marcar(); pintar(); estado(""); }
+  function cambiarMotor(m) { cortarTodo(); L.sonando = false; L.enPausa = -1; L.motor = pref.motor = m; guardarPref(); rearmar(); marcar(); pintar(); estado(""); if (m === "gemini") prepararClase(); else audioEstado(""); }
 
   /* ---------- API ---------- */
   function parar() {
+    clearTimeout(sondeoT);
     if (L) { cortarTodo(); L.read.classList.remove("lector-on"); }
     document.querySelectorAll(".read .leyendo").forEach(e => e.classList.remove("leyendo"));
     if (bar) { bar.remove(); bar = null; document.body.classList.remove("con-lector"); }
     L = null;
   }
-  function empezar({ read, slug, gemini, voces, vozDef }) {
+  function empezar({ read, slug, gemini, voces, vozDef, clases, md }) {
     parar();
     const bs = bloques(read); if (!bs.length) return;
     const motor = gemini && pref.motor !== "sistema" ? "gemini" : SY ? "sistema" : null;
     if (!motor) { alert("Este navegador no puede leer en voz alta y la voz de Gemini no está configurada."); return; }
-    L = { read, slug, gemini, voces: voces || [], vozDef, bs, motor, ps: [], i: 0, gen: 0, sonando: false, enPausa: -1, vel: pref.vel || 1, cache: new Map() };
+    L = { read, slug, gemini, voces: voces || [], vozDef, bs, motor, ps: [], i: 0, gen: 0, sonando: false, enPausa: -1, vel: pref.vel || 1, cache: new Map(), lotes: {}, todas: false, clases: clases || [], md: md || (t => t) };
     L.ps = piezas(bs, motor);
     // Arranca desde el primer párrafo que estás viendo en pantalla.
     const vis = bs.findIndex(b => b.el.getBoundingClientRect().bottom > 90);
     if (vis > 0) L.i = L.ps.findIndex(p => p.els.includes(bs[vis].el));
     read.classList.add("lector-on");
-    abrirBarra(); play();
+    abrirBarra(); prepararClase(); play();
   }
   document.addEventListener("click", e => {
     if (!L || !L.read.contains(e.target) || e.target.closest("a,button") || String(getSelection()).trim()) return;
