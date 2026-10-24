@@ -87,7 +87,7 @@ A la derecha del resumen, debajo de "Pasos en esta estación", está **Mis apunt
 
 ### Cómo responder una pregunta
 
-1. Escribí tu respuesta como en el examen. Mínimo 8 palabras. Para dictarla, tocá el **micrófono**, hablá y tocá el cuadradito para terminar; en unos segundos aparece el texto.
+1. Escribí tu respuesta como en el examen. Mínimo 8 palabras. Para dictarla, tocá el **micrófono** y hablá: abajo aparece un recuadro con lo que va entendiendo, palabra por palabra (en gris lo que todavía está adivinando). Tocá el cuadradito para terminar. Si tenés whisper configurado, el texto final lo pasa en limpio whisper, que es más preciso.
 2. Tocá **Corregir**. Tarda unos segundos.
 3. Leé la corrección:
    - **Nota** arriba (sobre 10) y si estuvo bien, a medias o mal.
@@ -142,7 +142,8 @@ El agente revisa todas las preguntas contra el resumen: si falta la explicación
 ### Si algo no anda
 
 - **"Corrector apagado"**: con Gemini, revisá que `GEMINI_API_KEY` esté en `.env` y reiniciá el servidor (Ctrl+C y `python3 server.py`). Con Ollama, abrí la app de Ollama y corré `ollama list` para ver que el modelo esté bajado.
-- **No aparece el micrófono**: falta configurar whisper (ver el README).
+- **No aparece el micrófono**: tu navegador no reconoce voz y whisper no está configurado. Usá Chrome o Safari, o configurá whisper (ver el README).
+- **El dictado en vivo y la privacidad**: lo que se ve mientras hablás lo reconoce el navegador; en Chrome eso pasa por los servidores de Google. El texto final, si usás whisper, se hace en tu compu.
 - **La página no carga**: el servidor no está corriendo. Volvé a correr `python3 server.py`.
 - **Cambiaron las preguntas y no se ven**: recargá la página (Cmd+R o F5).
 - **Tu progreso** se guarda solo, en la carpeta `progreso/` del proyecto, y en `progreso/copias/` queda una copia por día (las últimas 14). No hace falta guardar nada a mano. Para recuperar un día anterior: con el servidor apagado, copiá el archivo de ese día de `progreso/copias/` a `progreso/<materia>.json`, borrá los datos del sitio en el navegador y volvé a abrir.
