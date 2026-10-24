@@ -196,6 +196,7 @@
         <button class="btn primary" data-grade="${k}" ${ST.corrector ? "" : "hidden"}>Corregir</button>
         <button class="btn" data-ref="${k}" aria-expanded="false" ${words(draft) < 8 && !S["u-" + k] ? "disabled" : ""}>Ver respuesta de referencia</button>
         <button class="btn ghost" data-dunno="${k}">No la sé</button>
+        <button class="btn ghost" data-copiar="${k}" title="Copia la pregunta, tu respuesta y la corrección para pegársela a Claude">Copiar para Claude</button>
         <span class="words" id="w-${k}"></span></div>
       <div class="vivo" id="vivo-${k}" aria-live="polite" hidden></div>
       <div id="out-${k}"></div>
@@ -246,6 +247,25 @@
     return (faltan.length ? `<span class="lab">Te faltó</span><ul class="claves">${faltan.map(item).join("")}</ul>` : "")
       + (errs.length ? `<span class="lab">Está mal</span><ul class="mal">${errs.map(e => `<li><span>Dijiste: ${esc(e.dijiste)}</span>${e.correcto ? `<span class="ok-t">Es así: ${esc(e.correcto)}</span>` : ""}</li>`).join("")}</ul>` : "");
   }
+  /* Texto plano de una pregunta (pregunta, tu respuesta, corrección y referencia) para pegarlo en un chat. */
+  function textoPregunta(k) {
+    const { c, i, q } = kq(k), g = S["g-" + k], ans = (S["a-" + k] || "").trim(), T = ["Mal", "A medias", "Bien"], v = S["r-" + k];
+    const L = [`Clase ${c.n} · Pregunta ${i + 1}: ${q.pregunta}`, "", `Mi respuesta: ${ans || (S["u-" + k] ? "(no la sabía)" : "(sin responder)")}`];
+    if (v === 0 || v === 1 || v === 2) L.push("", `Resultado: ${T[v]}${g ? " · " + g.puntaje + "/10" : " (autocalificado)"}`);
+    if (g) {
+      const faltan = (g.claves || []).filter(x => x.estado !== "presente"), errs = errList(g);
+      faltan.forEach(x => L.push("", `- ${x.estado === "parcial" ? "A medias" : "Falta"}: ${x.texto}` + (x.dijiste ? `\n  Yo dije: ${x.dijiste}` : "") + (x.falta && x.falta !== x.texto ? `\n  Qué faltó: ${x.falta}` : "")));
+      errs.forEach(e => L.push("", `- Está mal: ${e.dijiste}` + (e.correcto ? `\n  Es así: ${e.correcto}` : "")));
+    }
+    if (q.referencia) L.push("", `Respuesta de referencia: ${q.referencia}`);
+    return L.join("\n");
+  }
+  async function copiar(texto, btn) {
+    const orig = btn.textContent;
+    try { await navigator.clipboard.writeText(texto); btn.textContent = "Copiado"; }
+    catch { btn.textContent = "No se pudo copiar"; }
+    setTimeout(() => { btn.textContent = orig; }, 1800);
+  }
   function renderVerdict(k, g) {
     const out = $("out-" + k); if (!out) return;
     const { c, q } = kq(k), T = ["Mal, repasala", "A medias", "Bien"];
@@ -294,6 +314,7 @@
     // Lo que sale directo de las correcciones, sin modelo
     const secs = [...new Set(weak.map(x => x.q.donde).filter(Boolean))];
     if (secs.length) h += `<h4>Releé estas secciones del resumen</h4><ul class="releer">${secs.map(t => `<li><button class="donde" data-donde="${esc(t)}" data-donde-c="${c.n}">${esc(t)}</button></li>`).join("")}</ul>`;
+    h += `<p><button class="btn" data-copiar-flojas="${c.n}">Copiar las ${weak.length} flojas para Claude</button></p>`;
     h += `<details class="fin-det"><summary>Pregunta por pregunta (${weak.length})</summary><ul class="weak fin-q">${weak.map(x => {
       const g = S["g-" + x.k];
       const det = g ? fallas(g) : `<span class="lab">Sin corrección. Lo que tenía que decir la respuesta</span><ul class="plain">${(x.q.claves || []).map(y => `<li>${esc(y)}</li>`).join("")}</ul>`;
@@ -661,6 +682,8 @@
     if (t.dataset.ref) { const r = $("ref-" + t.dataset.ref); r.hidden = !r.hidden; t.setAttribute("aria-expanded", String(!r.hidden)); t.textContent = r.hidden ? "Ver respuesta de referencia" : "Ocultar respuesta de referencia"; return; }
     if (t.dataset.rate) { const k = "r-" + t.dataset.rate, v = +t.dataset.v; S[k] = S[k] === v ? undefined : v; if (S[k] === v) marcar(t.dataset.rate, v); save(); document.querySelectorAll(`[data-rate="${t.dataset.rate}"]`).forEach(b => b.setAttribute("aria-pressed", String(S[k] === +b.dataset.v))); weakCount(); finRender(kq(t.dataset.rate).c); return; }
     if (t.dataset.grade) return grade(t.dataset.grade, t);
+    if (t.dataset.copiar) return copiar(textoPregunta(t.dataset.copiar), t);
+    if (t.dataset.copiarFlojas) { const c = byN(t.dataset.copiarFlojas); return copiar(rated(c).filter(x => x.v < 2).map(x => textoPregunta(x.k)).join("\n\n---\n\n"), t); }
     if (t.dataset.rec) return toggleRec(t.dataset.rec, t);
     if (t.dataset.dunno) {
       const k = t.dataset.dunno; S["r-" + k] = 0; S["u-" + k] = 1; marcar(k, 0); save(); $("ref-" + k).hidden = false;
