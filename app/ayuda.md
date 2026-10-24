@@ -87,7 +87,7 @@ A la derecha del resumen, debajo de "Pasos en esta estación", está **Mis apunt
 
 ### Cómo responder una pregunta
 
-1. Escribí tu respuesta como en el examen. Mínimo 8 palabras. Para dictarla, tocá el **micrófono** y hablá: abajo aparece un recuadro con lo que va entendiendo, palabra por palabra (en gris lo que todavía está adivinando). Tocá el cuadradito para terminar. Si tenés whisper configurado, el texto final lo pasa en limpio whisper, que es más preciso.
+1. Escribí tu respuesta como en el examen. Mínimo 8 palabras. Para dictarla, tocá el **micrófono** y hablá: lo que va entendiendo se escribe en la caja, palabra por palabra, después de lo que ya tenías escrito. Mientras grabás, la caja se pone roja y no se puede editar. Tocá el cuadradito para terminar. Si tenés whisper configurado, el texto final lo pasa en limpio whisper, que es más preciso.
 2. Tocá **Corregir**. Tarda unos segundos.
 3. Leé la corrección:
    - **Nota** arriba (sobre 10) y si estuvo bien, a medias o mal.

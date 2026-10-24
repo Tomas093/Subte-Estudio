@@ -304,9 +304,10 @@
   }
 
   /* ---------- dictado ----------
-     Mientras hablás se ve lo que va entendiendo: con el reconocimiento de voz del navegador
-     (palabra por palabra) o, si no hay, con whisper cada un par de segundos. Al terminar, el texto
-     final lo hace whisper si está configurado (es más preciso); si no, queda el del navegador. */
+     Lo que va entendiendo se escribe directo en la caja de la respuesta, después de lo que ya había:
+     con el reconocimiento de voz del navegador (palabra por palabra) o, si no hay, con whisper cada
+     un par de segundos. Al terminar, whisper reemplaza esa parte por su versión, más precisa, si
+     está configurado; si no, queda la del navegador. Mientras graba, la caja no se puede editar. */
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const puedeDictar = () => !!(ST.transcripcion || SR);
   let rec = null;
@@ -316,10 +317,14 @@
     btn.setAttribute("aria-label", L); btn.title = L; btn.disabled = estado === "transcribiendo";
     btn.innerHTML = estado === "grabando" ? ICON.stop : estado === "transcribiendo" ? "" : ICON.mic;
   }
-  function vivo(k, fijo, tentativo, nota) {
-    const box = $("vivo-" + k); if (!box) return;
-    box.hidden = false;
-    box.innerHTML = `<span class="v-lab">${esc(nota)}</span><span class="v-txt">${esc(fijo)}${tentativo ? ` <span class="v-tent">${esc(tentativo)}</span>` : ""}${!fijo && !tentativo ? `<span class="v-tent">Hablá, que voy escribiendo…</span>` : ""}</span>`;
+  function vivo(R, nota) {
+    const box = $("vivo-" + R.k), ta = $("ta-" + R.k);
+    if (box) { box.hidden = !nota; box.textContent = nota || ""; }
+    if (!ta) return;
+    const dicho = (R.fijo + " " + R.tent).trim();
+    ta.value = R.base + (R.base && dicho ? " " : "") + dicho;
+    ta.scrollTop = ta.scrollHeight;
+    ta.dispatchEvent(new Event("input", { bubbles: true }));  // cuenta palabras y guarda el borrador
   }
   async function whisper(blob) {
     const r = await fetch("/api/transcribir", { method: "POST", headers: { "Content-Type": blob.type }, body: blob });
@@ -335,7 +340,7 @@
       let fijo = "", tent = "";
       for (let i = 0; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) fijo += t; else tent += t; }
       R.fijo = (previo + " " + fijo).trim(); R.tent = tent.trim();
-      vivo(R.k, R.fijo, R.tent, "Escuchando");
+      vivo(R, "Escuchando… hablá y se va escribiendo en la caja.");
     };
     sr.onend = () => { if (rec === R && R.sr === sr) { previo = R.fijo; try { sr.start(); } catch (e) { } } };
     sr.onerror = e => { if (e.error === "not-allowed" || e.error === "service-not-allowed" || e.error === "network") { R.sr = null; if (ST.transcripcion) parciales(R); } };
@@ -347,7 +352,7 @@
     R.tic = setInterval(async () => {
       if (rec !== R || R.ocupado || !R.chunks.length) return;
       R.ocupado = true;
-      try { const t = await whisper(new Blob(R.chunks, { type: R.mr.mimeType || "audio/webm" })); if (rec === R) { R.fijo = t; vivo(R.k, t, "", "Escuchando (se actualiza cada unos segundos)"); } }
+      try { const t = await whisper(new Blob(R.chunks, { type: R.mr.mimeType || "audio/webm" })); if (rec === R) { R.fijo = t; vivo(R, "Escuchando… se actualiza cada unos segundos."); } }
       catch (e) { } finally { R.ocupado = false; }
     }, 2500);
   }
@@ -357,21 +362,21 @@
     let stream;
     try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
     catch (e) { $("out-" + k).innerHTML = `<p class="thinking">No pude usar el micrófono. Revisá el permiso del navegador.</p>`; return; }
-    const mr = new MediaRecorder(stream), R = { k, mr, chunks: [], fijo: "", tent: "", sr: null };
-    rec = R; micEstado(btn, "grabando"); vivo(k, "", "", "Escuchando");
+    const ta = $("ta-" + k), R = { k, mr: new MediaRecorder(stream), chunks: [], fijo: "", tent: "", sr: null, base: ta.value.trim() };
+    const mr = R.mr;
+    rec = R; micEstado(btn, "grabando"); ta.readOnly = true; ta.classList.add("dictando"); vivo(R, "Escuchando… hablá y se va escribiendo en la caja.");
     mr.ondataavailable = e => e.data.size && R.chunks.push(e.data);
     mr.onstop = async () => {
       stream.getTracks().forEach(t => t.stop()); rec = null; clearInterval(R.tic);
       const sr = R.sr; R.sr = null; if (sr) { try { sr.stop(); } catch (e) { } }
-      const delNavegador = (R.fijo + " " + R.tent).trim();
-      let texto = delNavegador;
+      R.fijo = (R.fijo + " " + R.tent).trim(); R.tent = "";
       if (ST.transcripcion) {
-        micEstado(btn, "transcribiendo"); vivo(k, delNavegador, "", "Pasando en limpio con whisper…");
-        try { texto = await whisper(new Blob(R.chunks, { type: mr.mimeType || "audio/webm" })); }
-        catch (e) { if (!delNavegador) $("out-" + k).innerHTML = `<p class="thinking">${esc(e.message)}</p>`; }
+        micEstado(btn, "transcribiendo"); vivo(R, "Pasando en limpio con whisper…");
+        try { const t = await whisper(new Blob(R.chunks, { type: mr.mimeType || "audio/webm" })); if (t) R.fijo = t; }
+        catch (e) { if (!R.fijo) $("out-" + k).innerHTML = `<p class="thinking">${esc(e.message)}</p>`; }
       }
-      $("vivo-" + k).hidden = true; micEstado(btn, "");
-      if (texto) { const ta = $("ta-" + k); ta.value = (ta.value.trim() ? ta.value.trim() + " " : "") + texto; ta.dispatchEvent(new Event("input", { bubbles: true })); }
+      vivo(R, ""); micEstado(btn, "");
+      ta.readOnly = false; ta.classList.remove("dictando");
     };
     mr.start(1000);  // de a 1 s, para poder transcribir lo grabado hasta ahora
     if (SR) escuchar(R); else if (ST.transcripcion) parciales(R);

@@ -365,6 +365,5 @@ table + .ed-quitar{display:block;margin:-6px 0 14px}
 @media (prefers-reduced-motion:reduce){.mic[data-estado="grabando"]::after{animation:none;opacity:.6;transform:scale(1.15)}}
 
 /* dictado en vivo */
-.vivo{padding:10px 14px;border:1px dashed var(--bad);border-radius:10px;background:color-mix(in srgb,var(--bad-soft) 55%,var(--panel));font:400 1rem/1.5 var(--read-font)}
-.vivo .v-lab{display:block;font:700 .74rem var(--sign-font);color:var(--bad);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px}
-.vivo .v-tent{color:var(--muted)}
+.q textarea.dictando{border-color:var(--bad);box-shadow:0 0 0 3px color-mix(in srgb,var(--bad) 20%,transparent);cursor:default}
+.vivo{font:600 .84rem var(--sign-font);color:var(--bad)}
