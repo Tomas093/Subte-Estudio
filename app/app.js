@@ -16,7 +16,9 @@
   const firstPending = () => (M.clases.find(c => !done(c)) || M.clases[M.clases.length - 1]).n;
   const current = () => (S.open && byN(S.open) ? S.open : firstPending());
   const fileUrl = u => (/^https?:/.test(u) ? u : "/materias/" + M.slug + "/" + u);
-  const kq = k => { const [n, i] = k.slice(1).split("-").map(Number); const c = byN(n); return { c, i, q: c && (c.preguntas || [])[i] }; };
+  // Cada pregunta se guarda por su id fijo (h<clase>-<id>), no por su posición: sacar o reordenar preguntas no corre las respuestas.
+  const qk = (c, q) => "h" + c.n + "-" + q.id;
+  const kq = k => { const m = k.match(/^h(\d+)-(.+)$/), c = m && byN(+m[1]), i = c ? (c.preguntas || []).findIndex(q => q.id === m[2]) : -1; return { c, i, q: i >= 0 ? c.preguntas[i] : undefined }; };
   /* Títulos comparables: el campo "donde" de cada pregunta es el título de una sección del resumen. */
   const norm = t => String(t || "").replace(/^#+\s*/, "").replace(/[*`_]/g, "").replace(/\s+/g, " ").trim().replace(/[.:]$/, "").toLowerCase();
   const dondeLink = (q, n) => q && q.donde ? `<button class="donde" data-donde="${esc(q.donde)}" data-donde-c="${n}">Dónde se explica: ${esc(q.donde)}</button>` : "";
@@ -62,7 +64,7 @@
       const r = await fetch(progresoUrl(), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(S) });
       if (!r.ok) throw new Error((await r.json()).error);
       $("foot").textContent = FOOT;
-    } catch (e) { $("foot").textContent = "No se pudo guardar tu progreso en el disco: revisá que el servidor esté corriendo. Mientras tanto queda en este navegador."; }
+    } catch (e) { $("foot").textContent = /vieja/.test(e.message) ? e.message : "No se pudo guardar tu progreso en el disco: revisá que el servidor esté corriendo. Mientras tanto queda en este navegador."; }
   }
   addEventListener("pagehide", () => { if (pendiente && M) navigator.sendBeacon(progresoUrl(), new Blob([JSON.stringify(S)], { type: "application/json" })); });
 
@@ -185,7 +187,7 @@
     pintarResumen(c); refreshChecks(); refreshQuestions(c); finRender(c);
   }
   function question(c, q, i) {
-    const k = "h" + c.n + "-" + i, draft = S["a-" + k] || "";
+    const k = qk(c, q), draft = S["a-" + k] || "";
     return `<div class="q" id="q-${k}"><div class="q-head"><span class="q-n">${i + 1}/${c.preguntas.length}</span><p class="q-text">${esc(q.pregunta)}</p></div>
     <div class="q-body">
       <textarea id="ta-${k}" data-draft="${k}" aria-label="Tu respuesta a la pregunta ${i + 1}" placeholder="Tu respuesta… (o dictala)">${esc(draft)}</textarea>
@@ -208,7 +210,7 @@
   }
   function refreshQuestions(c) {
     (c.preguntas || []).forEach((q, i) => {
-      const k = "h" + c.n + "-" + i, w = $("w-" + k);
+      const k = qk(c, q), w = $("w-" + k);
       if (w) { const n = words(S["a-" + k]); w.textContent = n ? n + " palabras" : ""; }
       if (S["g-" + k]) renderVerdict(k, S["g-" + k]);
       document.querySelectorAll(`[data-rate="${k}"]`).forEach(b => b.setAttribute("aria-pressed", String(S["r-" + k] === +b.dataset.v)));
@@ -218,16 +220,16 @@
 
   /* ---------- corrección ---------- */
   async function grade(k, btn) {
-    const [cn, i] = k.slice(1).split("-").map(Number), out = $("out-" + k), ans = (S["a-" + k] || "").trim();
+    const { c, i, q } = kq(k), out = $("out-" + k), ans = (S["a-" + k] || "").trim();
     if (words(ans) < 8) { out.innerHTML = `<p class="thinking">Escribí una respuesta un poco más completa antes de corregirla.</p>`; return; }
     btn.disabled = true; out.innerHTML = `<p class="thinking">Corrigiendo…</p>`;
     try {
-      const r = await fetch("/api/corregir", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ materia: M.slug, clase: cn, i, respuesta: ans }) });
+      const r = await fetch("/api/corregir", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ materia: M.slug, clase: c.n, i, id: q.id, respuesta: ans }) });
       const g = await r.json();
       if (!r.ok) throw new Error(g.error || "No se pudo corregir.");
       S["g-" + k] = g; S["r-" + k] = g.veredicto; marcar(k, g.veredicto); save(); renderVerdict(k, g);
       document.querySelectorAll(`[data-rate="${k}"]`).forEach(b => b.setAttribute("aria-pressed", String(g.veredicto === +b.dataset.v)));
-      weakCount(); finRender(byN(cn));
+      weakCount(); finRender(c);
     } catch (e) { out.innerHTML = `<p class="thinking">${esc(e.message)}</p>`; }
     finally { btn.disabled = false; }
   }
@@ -265,7 +267,7 @@
     return h;
   }
   const ARMANDO = new Set();
-  function rated(c) { return (c.preguntas || []).map((q, i) => ({ q, i, k: "h" + c.n + "-" + i, v: S["r-h" + c.n + "-" + i] })).filter(x => x.v === 0 || x.v === 1 || x.v === 2); }
+  function rated(c) { return (c.preguntas || []).map((q, i) => ({ q, i, k: qk(c, q), v: S["r-" + qk(c, q)] })).filter(x => x.v === 0 || x.v === 1 || x.v === 2); }
   const firma = w => JSON.stringify(w.map(x => [x.i, x.v, (S["g-" + x.k] || {}).puntaje]));
   function finRender(c) {
     const box = $("fin-" + c.n); if (!box) return;
@@ -414,7 +416,7 @@
     ${M.cuaderno ? `<li><span class="k">Cuaderno completo</span><div><a href="${esc(M.cuaderno)}" target="_blank" rel="noopener">Abrir NotebookLM</a><p>Para hacerle preguntas al material.</p></div></li>` : ""}</ul>
     ${M.como_responder_md ? `<details class="howto" open><summary>Cómo responder el examen</summary><div class="read">${md(M.como_responder_md)}</div></details>` : ""}`;
   }
-  const srList = () => { const w = []; for (const c of M.clases) (c.preguntas || []).forEach((q, i) => { const k = "h" + c.n + "-" + i, sr = S["sr-" + k]; if (sr) w.push({ c, q, i, k, sr, v: S["r-" + k] }); }); return w.sort((a, b) => a.sr.vence - b.sr.vence); };
+  const srList = () => { const w = []; for (const c of M.clases) (c.preguntas || []).forEach((q, i) => { const k = qk(c, q), sr = S["sr-" + k]; if (sr) w.push({ c, q, i, k, sr, v: S["r-" + k] }); }); return w.sort((a, b) => a.sr.vence - b.sr.vence); };
   function weakCount() {
     const n = srList().filter(x => x.sr.vence <= Date.now()).length;
     $("weakCount").textContent = n ? `· ${n}` : "";
@@ -703,7 +705,14 @@
     const subir = !disco && Object.keys(S).length > 0;
     if (disco && (disco._t || 0) >= (S._t || 0)) S = disco;
     // Preguntas mal o a medias de antes del repaso espaciado: tocan ahora.
-    for (const c of M.clases) (c.preguntas || []).forEach((q, i) => { const k = "h" + c.n + "-" + i; if ((S["r-" + k] === 0 || S["r-" + k] === 1) && !S["sr-" + k]) S["sr-" + k] = { paso: 0, vence: Date.now() }; });
+    // Progreso del formato viejo (clave por posición): se pasa al id de la pregunta que hoy ocupa esa posición.
+    for (const key of Object.keys(S)) {
+      const m = key.match(/^([a-z]+)-h(\d+)-(\d+)$/); if (!m) continue;
+      const c = byN(+m[2]), q = c && (c.preguntas || [])[+m[3]];
+      if (q && S[m[1] + "-" + qk(c, q)] === undefined) S[m[1] + "-" + qk(c, q)] = S[key];
+      delete S[key]; S._t = Date.now();
+    }
+    for (const c of M.clases) (c.preguntas || []).forEach((q, i) => { const k = qk(c, q); if ((S["r-" + k] === 0 || S["r-" + k] === 1) && !S["sr-" + k]) S["sr-" + k] = { paso: 0, vence: Date.now() }; });
     if (subir || (S._t || 0) > ((disco && disco._t) || 0)) save();
     $("brandName").textContent = "Red de estudio · " + M.titulo; $("disc").textContent = (M.titulo.match(/\p{L}+/gu) || ["S"]).map(w => w[0]).join("").slice(0, 2).toUpperCase();
     $("tabTerminal").textContent = "Terminal: " + ((M.examen && M.examen.nombre) || "examen").toLowerCase();

@@ -64,6 +64,11 @@ def main():
         except ValueError as e:
             errores.append(f"clase {n}: preguntas inválidas ({e})")
             continue
+        ids = [p.get("id") for p in qs]
+        if not all(ids):
+            avisos.append(f"clase {n}: hay preguntas sin 'id' (el progreso se guarda por id; si falta se calcula del texto y cambia al editarlo)")
+        if len(set(filter(None, ids))) != len(list(filter(None, ids))):
+            errores.append(f"clase {n}: hay 'id' de preguntas repetidos")
         for i, p in enumerate(qs, 1):
             if not p.get("pregunta") or not p.get("referencia"):
                 errores.append(f"clase {n} pregunta {i}: falta pregunta o referencia")
