@@ -37,7 +37,7 @@ El resumen es la parte teórica del estudio: el video y el audio ya dieron los e
 - Definí cada término la primera vez que aparece, en la misma oración.
 - Nada de símbolos como ⇒, →, ≠ dentro de la prosa; escribí "implica", "no es lo mismo que". Se permiten en fórmulas reales (R + W > N, L = λ·W).
 - No inventes hechos, números ni ejemplos que no estén en las fuentes. Si las fuentes no explican algo, no lo expliques vos.
-- Largo: lo que haga falta para entender, típicamente 1200 a 2500 palabras por clase. Profundidad antes que cobertura de nombres sueltos.
+- Largo: corto y al hueso, típicamente 700 a 1400 palabras por clase. Si hay examen modelo, el resumen cubre lo que ese examen evalúa y deja afuera lo que no aparece ahí (teoremas, cuentas o variantes que el examen no pide). Sin repetir la misma idea en dos secciones.
 - Nada de secciones de "profundización", "ampliación" o "para saber más": todo lo que puede evaluarse va en una sección principal, explicado completo. Si el material compara dos conceptos (por ejemplo, propiedades de seguridad y de progreso), la comparación va explícita: qué es cada uno, en qué se diferencian y un ejemplo de cada uno.
 - Sin emojis, sin "¡", sin frases de relleno ("es importante destacar que").
 
