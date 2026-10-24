@@ -321,8 +321,8 @@ body.con-lector{padding-bottom:120px}
 }
 
 /* explicame */
-.explica{position:fixed;right:16px;top:16px;bottom:16px;width:min(420px,calc(100vw - 32px));z-index:65;background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--sign);border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.2);display:flex;flex-direction:column;padding:16px 18px;gap:10px}
-body.con-lector .explica{bottom:110px}
+.explica{position:fixed;right:16px;bottom:16px;max-height:calc(100vh - 32px);width:min(420px,calc(100vw - 32px));z-index:65;background:var(--panel);border:1px solid var(--line);border-top:3px solid var(--sign);border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.2);display:flex;flex-direction:column;padding:16px 18px;gap:10px}
+body.con-lector .explica{bottom:110px;max-height:calc(100vh - 126px)}
 .ex-head{display:flex;align-items:center;justify-content:space-between}
 .ex-head h3{margin:0;font:800 1.1rem var(--sign-font)}
 .ex-x{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;padding:5px 12px;font:700 .82rem var(--sign-font);cursor:pointer}
@@ -336,5 +336,12 @@ body.con-lector .explica{bottom:110px}
 .explica .lk{align-self:flex-start;background:none;border:0;padding:0;color:var(--la-ink);text-decoration:underline;text-underline-offset:3px;cursor:pointer;font:600 .86rem var(--sign-font)}
 .explica .lk:disabled{color:var(--ok);text-decoration:none;cursor:default}
 .ex-form{display:flex;gap:8px}
-.ex-form input{flex:1;min-width:0;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font:400 .95rem var(--read-font)}
-@media (max-width:980px){.explica{top:auto;left:0;right:0;bottom:0;width:auto;max-height:75vh;border-radius:14px 14px 0 0;padding-bottom:calc(16px + env(safe-area-inset-bottom))}body.con-lector .explica{bottom:0}body.con-explica .notas-fab{display:none}}
+.ex-form{align-items:flex-end}
+.ex-form textarea{flex:1;min-width:0;resize:none;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);font:400 .95rem/1.4 var(--read-font)}
+.ex-form textarea:focus{border-color:var(--focus);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--focus) 25%,transparent)}
+.ex-ayuda{color:var(--muted);font-size:.92rem}
+.ex-rapidas{display:flex;flex-wrap:wrap;gap:6px}
+.ex-rapidas button{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;padding:5px 11px;font:600 .8rem var(--sign-font);cursor:pointer}
+.ex-rapidas button:hover:not(:disabled){border-color:var(--ink)}
+.ex-rapidas button:disabled{opacity:.5;cursor:default}
+@media (max-width:980px){.explica{left:0;right:0;bottom:0;width:auto;max-height:75vh;border-radius:14px 14px 0 0;padding-bottom:calc(16px + env(safe-area-inset-bottom))}body.con-lector .explica{bottom:0;max-height:75vh}body.con-explica .notas-fab{display:none}}

@@ -1,6 +1,6 @@
 /* Lector: lee el resumen en voz alta y resalta lo que va leyendo.
-   Dos motores: la voz de Gemini (más humana; el servidor genera y guarda el audio)
-   y la voz del sistema (speechSynthesis del navegador, gratis y sin internet). */
+   Motores del servidor (generan y guardan el audio): Microsoft (gratis), Piper (local, gratis)
+   y Gemini (usa créditos). Y la voz del sistema (speechSynthesis del navegador). */
 (function () {
   "use strict";
   const SY = window.speechSynthesis;
@@ -12,6 +12,9 @@
 
   let L = null, bar = null, toqueManual = 0;
   const audio = new Audio();
+  const servidor = m => m && m !== "sistema";
+  if (pref.vozGemini && !pref.voces) pref.voces = { gemini: pref.vozGemini };
+  const vozDe = m => ((pref.voces || {})[m]) || (L.motores[m] || {}).def;
 
   /* ---------- texto a leer ---------- */
   function bloques(read) {
@@ -33,11 +36,11 @@
     return out;
   }
   /* Sistema: una oración por vez (Chrome corta las frases largas).
-     Gemini: un párrafo por vez, para que el resaltado siga la lectura; los títulos e ítems
+     Servidor: un párrafo por vez, para que el resaltado siga la lectura; los títulos e ítems
      cortos se pegan al párrafo siguiente para no hacer pedidos de una línea. */
   function piezas(bs, motor) {
     const out = [];
-    if (motor !== "gemini") { for (const b of bs) for (const t of cortar(b.t, 220)) out.push({ els: [b.el], t }); return out; }
+    if (!servidor(motor)) { for (const b of bs) for (const t of cortar(b.t, 220)) out.push({ els: [b.el], t }); return out; }
     let pend = null;
     for (const b of bs) {
       if (b.t.length < 120) {
@@ -75,9 +78,9 @@
   function cortarTodo() { L.gen++; if (SY) SY.cancel(); audio.pause(); audio.onended = null; }
   function decir() {
     const p = L.ps[L.i];
-    if (!p) { L.sonando = false; L.i = 0; estado("Terminó el resumen."); pintar(); return; }
+    if (!p) { L.sonando = false; L.i = 0; document.querySelectorAll(".read .leyendo").forEach(e => e.classList.remove("leyendo")); estado("Terminó el resumen."); pintar(); return; }
     marcar(); estado(""); pintar();
-    if (L.motor === "gemini") return decirGemini(p);
+    if (servidor(L.motor)) return decirServidor(p);
     const g = L.gen, u = new SpeechSynthesisUtterance(p.t), v = vozSistema();
     if (v) { u.voice = v; u.lang = v.lang; } else u.lang = "es-AR";
     u.rate = L.vel;
@@ -86,24 +89,28 @@
     u.onerror = e => { if (e.error !== "interrupted" && e.error !== "canceled") fin(); };
     SY.cancel(); SY.speak(u);
   }
-  function urlGemini(i) {
+  function urlServidor(i) {
     const p = L.ps[i]; if (!p) return null;
     if (!L.cache.has(p.t)) {
-      L.cache.set(p.t, fetch("/api/voz", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ materia: L.slug, texto: p.t, voz: pref.vozGemini }) })
+      L.cache.set(p.t, fetch("/api/voz", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ materia: L.slug, texto: p.t, motor: L.motor, voz: vozDe(L.motor) }) })
         .then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error || "No se pudo generar la voz."); return d.url; })
         .catch(e => { L.cache.delete(p.t); throw e; }));
     }
     return L.cache.get(p.t);
   }
-  async function decirGemini(p) {
+  function alternativa() {
+    const m = Object.keys(L.motores).find(x => x !== L.motor && x !== "gemini") || (SY ? "sistema" : null);
+    return m ? ` <button class="lk" data-lector="motor" data-m="${m}">Probar con: ${m === "sistema" ? "Voz del sistema" : esc(L.motores[m].nombre)}</button>` : "";
+  }
+  async function decirServidor(p) {
     const g = L.gen;
     let url;
     const espera = setTimeout(() => g === L.gen && estado("Generando la voz…"), 400);
-    try { url = await urlGemini(L.i); }
+    try { url = await urlServidor(L.i); }
     catch (e) {
       clearTimeout(espera); if (g !== L.gen) return;
       L.sonando = false; pintar();
-      estado(e.message + (SY ? ' <button class="lk" data-lector="sistema">Usar la voz del sistema</button>' : ""));
+      estado(esc(e.message) + alternativa());
       return;
     }
     clearTimeout(espera);
@@ -112,15 +119,15 @@
     audio.src = url; audio.playbackRate = L.vel;
     audio.onended = () => { if (g === L.gen && L.sonando) { L.i++; decir(); } };
     audio.play().catch(() => { });
-    urlGemini(L.i + 1)?.catch(() => { });  // la próxima se va generando mientras escuchás esta
+    urlServidor(L.i + 1)?.catch(() => { });  // la próxima se va generando mientras escuchás esta
   }
   function play() {
     L.sonando = true;
-    // Gemini en pausa a mitad de un fragmento: seguir desde ahí.
-    if (L.motor === "gemini" && audio.src && audio.paused && audio.currentTime > 0 && !audio.ended && L.enPausa === L.i) { audio.play(); pintar(); return; }
+    // Audio del servidor en pausa a mitad de un fragmento: seguir desde ahí.
+    if (servidor(L.motor) && audio.src && audio.paused && audio.currentTime > 0 && !audio.ended && L.enPausa === L.i) { audio.play(); pintar(); return; }
     cortarTodo(); decir();
   }
-  function pausa() { L.sonando = false; L.enPausa = L.i; if (L.motor === "gemini") audio.pause(); else { L.gen++; SY.cancel(); } pintar(); }
+  function pausa() { L.sonando = false; L.enPausa = L.i; if (servidor(L.motor)) audio.pause(); else { L.gen++; SY.cancel(); } pintar(); }
   function ir(i) { cortarTodo(); L.enPausa = -1; L.i = Math.max(0, Math.min(L.ps.length - 1, i)); if (L.sonando) decir(); else { marcar(); pintar(); } }
   function bloque(dir) {
     const el = L.ps[L.i].els[0];
@@ -135,25 +142,25 @@
     const j = L.ps.findIndex(p => p.els.includes(el)); L.i = j < 0 ? 0 : j;
   }
 
-  /* ---------- precarga del audio de Gemini ----------
+  /* ---------- precarga del audio del servidor ----------
      Al empezar se le pide al servidor que genere todos los párrafos de la clase en segundo plano,
      empezando por donde estás. Sigue aunque cierres el lector, mientras el servidor esté prendido. */
   const post = (url, body) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(async r => { const d = await r.json(); if (!r.ok) throw new Error(d.error || "Error"); return d; });
   async function lote(textos, todas) {
-    try { const d = await post("/api/voz/lote", { materia: L.slug, voz: pref.vozGemini || L.vozDef, textos }); L.lotes[d.id] = d; if (todas) L.todas = true; sondear(); }
+    try { const d = await post("/api/voz/lote", { materia: L.slug, motor: L.motor, voz: vozDe(L.motor), textos }); L.lotes[d.id] = d; if (todas) L.todas = true; sondear(); }
     catch (e) { audioEstado(`No se pudo preparar el audio: ${esc(e.message)}`); }
   }
   function prepararClase() {
-    if (!L || L.motor !== "gemini") return;
+    if (!L || !servidor(L.motor)) return;
     lote([...L.ps.slice(L.i), ...L.ps.slice(0, L.i)].map(p => p.t), false);
   }
   async function prepararTodas() {
-    if (!L || L.motor !== "gemini") return;
+    if (!L || !servidor(L.motor)) return;
     const tmp = document.createElement("div");
     for (const c of L.clases) {
       if (!c.resumen_md) continue;
       tmp.innerHTML = L.md(c.resumen_md);
-      await lote(piezas(bloques(tmp), "gemini").map(p => p.t), true);
+      await lote(piezas(bloques(tmp), L.motor).map(p => p.t), true);
     }
   }
   function cancelarLotes() {
@@ -191,10 +198,11 @@
     bar.querySelector(".l-play").setAttribute("aria-label", L.sonando ? "Pausar" : "Escuchar");
     bar.querySelector(".l-pos").textContent = `${bloqueN} de ${L.bs.length}`;
     const mot = bar.querySelector(".l-motor");
-    mot.innerHTML = (L.gemini ? `<option value="gemini" ${L.motor === "gemini" ? "selected" : ""}>Voz de Gemini</option>` : "") + (SY ? `<option value="sistema" ${L.motor !== "gemini" ? "selected" : ""}>Voz del sistema</option>` : "");
-    const td = bar.querySelector(".l-todas"); td.hidden = L.motor !== "gemini" || L.todas || L.clases.length < 2;
+    mot.innerHTML = Object.entries(L.motores).map(([m, x]) => `<option value="${m}" ${L.motor === m ? "selected" : ""}>${esc(x.nombre)}</option>`).join("")
+      + (SY ? `<option value="sistema" ${L.motor === "sistema" ? "selected" : ""}>Voz del sistema</option>` : "");
+    const td = bar.querySelector(".l-todas"); td.hidden = !servidor(L.motor) || L.todas || L.clases.length < 2;
     const vz = bar.querySelector(".l-voz");
-    if (L.motor === "gemini") vz.innerHTML = L.voces.map(v => `<option ${v === (pref.vozGemini || L.vozDef) ? "selected" : ""}>${esc(v)}</option>`).join("");
+    if (servidor(L.motor)) vz.innerHTML = L.motores[L.motor].voces.map(v => `<option value="${esc(v.id)}" ${v.id === vozDe(L.motor) ? "selected" : ""}>${esc(v.nombre)}</option>`).join("");
     else vz.innerHTML = vs.length ? vs.map(v => `<option value="${esc(v.name)}" ${sis && v.name === sis.name ? "selected" : ""}>${esc(v.name)} (${esc(v.lang)})</option>`).join("") : `<option>No hay voces en español instaladas</option>`;
   }
   function abrirBarra() {
@@ -222,22 +230,26 @@
       if (k === "ant") bloque(-1);
       if (k === "sig") bloque(1);
       if (k === "cerrar") parar();
-      if (k === "sistema") { cambiarMotor("sistema"); play(); }
+      if (k === "motor") { cambiarMotor(a.dataset.m); play(); }
       if (k === "todas") { a.hidden = true; prepararTodas(); }
     });
     bar.addEventListener("change", e => {
-      if (e.target.matches(".l-vel")) { L.vel = pref.vel = +e.target.value; guardarPref(); audio.playbackRate = L.vel; if (L.sonando && L.motor !== "gemini") { cortarTodo(); decir(); } }
+      if (e.target.matches(".l-vel")) { L.vel = pref.vel = +e.target.value; guardarPref(); audio.playbackRate = L.vel; if (L.sonando && !servidor(L.motor)) { cortarTodo(); decir(); } }
       if (e.target.matches(".l-motor")) { const s = L.sonando; cambiarMotor(e.target.value); if (s) play(); }
       if (e.target.matches(".l-voz")) {
-        if (L.motor === "gemini") pref.vozGemini = e.target.value; else pref.vozSistema = e.target.value;
+        if (servidor(L.motor)) pref.voces = Object.assign(pref.voces || {}, { [L.motor]: e.target.value }); else pref.vozSistema = e.target.value;
         guardarPref(); L.cache.clear();
-        if (L.motor === "gemini") { const todas = L.todas; cancelarLotes(); prepararClase(); if (todas) prepararTodas(); }
+        if (servidor(L.motor)) { const todas = L.todas; cancelarLotes(); prepararClase(); if (todas) prepararTodas(); }
         if (L.sonando) { cortarTodo(); decir(); }
       }
     });
     pintar();
   }
-  function cambiarMotor(m) { cortarTodo(); L.sonando = false; L.enPausa = -1; L.motor = pref.motor = m; guardarPref(); rearmar(); marcar(); pintar(); estado(""); if (m === "gemini") prepararClase(); else audioEstado(""); }
+  function cambiarMotor(m) {
+    cortarTodo(); cancelarLotes(); L.cache.clear();  // no seguir generando (ni gastando) con el motor anterior
+    L.sonando = false; L.enPausa = -1; L.motor = pref.motor = m; guardarPref(); rearmar(); marcar(); pintar(); estado("");
+    prepararClase();
+  }
 
   /* ---------- API ---------- */
   function parar() {
@@ -247,12 +259,14 @@
     if (bar) { bar.remove(); bar = null; document.body.classList.remove("con-lector"); }
     L = null;
   }
-  function empezar({ read, slug, gemini, voces, vozDef, clases, md }) {
+  function empezar({ read, slug, motores, clases, md }) {
     parar();
     const bs = bloques(read); if (!bs.length) return;
-    const motor = gemini && pref.motor !== "sistema" ? "gemini" : SY ? "sistema" : null;
-    if (!motor) { alert("Este navegador no puede leer en voz alta y la voz de Gemini no está configurada."); return; }
-    L = { read, slug, gemini, voces: voces || [], vozDef, bs, motor, ps: [], i: 0, gen: 0, sonando: false, enPausa: -1, vel: pref.vel || 1, cache: new Map(), lotes: {}, todas: false, clases: clases || [], md: md || (t => t) };
+    motores = motores || {};
+    // La que elegiste la última vez; si no, la primera gratis que haya (el servidor las manda en orden).
+    const motor = (pref.motor in motores || (pref.motor === "sistema" && SY)) ? pref.motor : Object.keys(motores)[0] || (SY ? "sistema" : null);
+    if (!motor) { alert("Este navegador no puede leer en voz alta y no hay voces instaladas. Corré scripts/instalar_voces.sh."); return; }
+    L = { read, slug, motores, bs, motor, ps: [], i: 0, gen: 0, sonando: false, enPausa: -1, vel: pref.vel || 1, cache: new Map(), lotes: {}, todas: false, clases: clases || [], md: md || (t => t) };
     L.ps = piezas(bs, motor);
     // Arranca desde el primer párrafo que estás viendo en pantalla.
     const vis = bs.findIndex(b => b.el.getBoundingClientRect().bottom > 90);

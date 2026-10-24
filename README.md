@@ -15,8 +15,8 @@ El contenido de cada materia (resúmenes, preguntas, plan) lo arman agentes de C
 - **Corrección:** el corrector marca cada punto clave como presente, parcial o ausente y te devuelve, en frases cortas y sin elogios, qué te faltó y qué dijiste mal y cómo es en realidad. Por defecto usa [Ollama](https://ollama.com) con un modelo local; también puede usar Gemini.
 - **Dónde se explica:** cada pregunta enlaza a la sección del resumen que la responde.
 - **Resumen de tus errores:** al calificar todas las preguntas de una clase, el corrector arma qué tenés que reforzar (qué fallaste, cómo es lo correcto y un ejercicio para fijarlo) y qué secciones releer.
-- **Escuchar el resumen:** lo lee en voz alta y resalta el párrafo que va leyendo, con velocidad ajustable. Usa la voz de Gemini (la más natural; al empezar prepara en segundo plano el audio de toda la clase, o de todas, y lo guarda en `cache/`) o la voz del sistema, gratis y sin internet.
-- **Explicame:** seleccionás una parte del resumen y el modelo te la explica simple, con un ejemplo, usando el resumen de la clase como fuente; podés seguir preguntando y guardar la idea en tus apuntes.
+- **Escuchar el resumen:** lo lee en voz alta y resalta el párrafo que va leyendo, con velocidad ajustable. Voces: Microsoft (neuronal, acento argentino, gratis y sin clave), Piper (local, gratis y sin internet), Gemini (usa créditos) o la del sistema. Al empezar prepara en segundo plano el audio de toda la clase, o de todas, y lo guarda en `cache/`.
+- **Explicame:** seleccionás una parte del resumen, escribís qué querés saber de ella (o usás una pregunta rápida, o lo dejás vacío) y el modelo te responde simple y con un ejemplo, usando el resumen de la clase como fuente; podés seguir preguntando y guardar la idea en tus apuntes.
 - **Mis apuntes:** al lado de cada resumen, un espacio por clase para escribir lo esencial; seleccionando texto del resumen se agrega con un toque. La pestaña "Mis apuntes" los junta todos y los descarga en Markdown.
 - **Dictado:** grabás tu respuesta con el micrófono y [whisper.cpp](https://github.com/ggml-org/whisper.cpp) la transcribe en tu compu.
 - **Horario:** plan por días hasta el examen.
@@ -29,6 +29,7 @@ El progreso y tus respuestas se guardan solos en `progreso/<materia>.json` (fuer
 
 - Python 3.9 o más nuevo (el servidor no usa dependencias externas).
 - Para corregir: [Ollama](https://ollama.com) y un modelo. Con 32 GB de RAM o más, `qwen3:30b` corrige bien; con menos memoria probá `qwen3:14b` o `qwen3:8b`. Los modelos chicos (por ejemplo `qwen2.5:7b`) aprueban respuestas incorrectas: en una prueba le pusieron 6 sobre 10 a una respuesta que decía lo contrario de la referencia.
+- Para escuchar los resúmenes con voces gratis: `bash scripts/instalar_voces.sh` (instala edge-tts y Piper dentro del proyecto y baja la voz argentina de Piper).
 - Para dictar: `whisper-cli` y `ffmpeg` (`brew install whisper-cpp ffmpeg`) y un modelo ggml de whisper, por ejemplo `ggml-large-v3-turbo-q5_0.bin`.
 - Para armar materias nuevas: [Claude Code](https://claude.com/claude-code) y, para extraer texto de PDFs, `pip install pypdf` o `brew install poppler`.
 
@@ -51,7 +52,9 @@ Abrí `http://127.0.0.1:8765`. Si tenés varias materias, elegís cuál en el se
 | `SUBTE_PROVEEDOR` | `ollama` (local) o `gemini` |
 | `SUBTE_MODELO` | Modelo de Ollama, por defecto `qwen3:30b` |
 | `GEMINI_API_KEY`, `GEMINI_MODELO` | Solo si usás Gemini; se cobra por uso según la tarifa de Google |
-| `GEMINI_VOZ`, `GEMINI_TTS_MODELO`, `GEMINI_VOZ_ESTILO`, `GEMINI_VOZ_PARALELO` | Voz que lee los resúmenes, modelo de voz, instrucción de tono y cuántos párrafos genera a la vez |
+| `MS_VOZ`, `PIPER_VOZ` | Voz por defecto de Microsoft y de Piper |
+| `GEMINI_VOZ`, `GEMINI_TTS_MODELO`, `GEMINI_VOZ_ESTILO` | Voz de Gemini, modelo de voz e instrucción de tono |
+| `VOZ_PARALELO` | Cuántos párrafos genera a la vez al preparar el audio |
 | `WHISPER_MODELO` | Ruta al modelo ggml de whisper.cpp |
 | `WHISPER_IDIOMA` | Idioma del dictado, por defecto `es` |
 | `SUBTE_DATOS` | Carpeta del progreso, por defecto `progreso/`. Poné una de iCloud o Dropbox para usarlo en varias compus |
