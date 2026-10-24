@@ -363,3 +363,8 @@ table + .ed-quitar{display:block;margin:-6px 0 14px}
 .ed-texto{width:100%;min-height:60vh;resize:vertical;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);font:400 .9rem/1.55 ui-monospace,SFMono-Regular,Menlo,monospace}
 .ed-tip{color:var(--muted);font-size:.85rem}
 @media (prefers-reduced-motion:reduce){.mic[data-estado="grabando"]::after{animation:none;opacity:.6;transform:scale(1.15)}}
+
+/* dictado en vivo */
+.vivo{padding:10px 14px;border:1px dashed var(--bad);border-radius:10px;background:color-mix(in srgb,var(--bad-soft) 55%,var(--panel));font:400 1rem/1.5 var(--read-font)}
+.vivo .v-lab{display:block;font:700 .74rem var(--sign-font);color:var(--bad);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px}
+.vivo .v-tent{color:var(--muted)}
