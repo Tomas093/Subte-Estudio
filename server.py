@@ -272,39 +272,48 @@ ESQUEMA_REPASO = {
     "type": "object",
     "properties": {
         "diagnostico": {"type": "string"},
-        "reforzar": {"type": "array", "items": {"type": "object", "properties": {
-            "tema": {"type": "string"}, "que_fallo": {"type": "string"}, "como_es": {"type": "string"},
-            "practica": {"type": "string"}}, "required": ["tema", "que_fallo", "como_es", "practica"]}},
+        "temas": {"type": "array", "items": {"type": "object", "properties": {
+            "tema": {"type": "string"}, "preguntas": {"type": "array", "items": {"type": "integer"}},
+            "que_fallo": {"type": "string"}, "como_es": {"type": "string"}, "practica": {"type": "string"}},
+            "required": ["tema", "preguntas", "que_fallo", "como_es", "practica"]}},
+        "firmes": {"type": "array", "items": {"type": "object", "properties": {
+            "tema": {"type": "string"}, "preguntas": {"type": "array", "items": {"type": "integer"}}},
+            "required": ["tema", "preguntas"]}},
     },
-    "required": ["diagnostico", "reforzar"],
+    "required": ["diagnostico", "temas", "firmes"],
 }
 
 
 def prompt_repaso(m, clase, items):
     bloques = []
-    for k, it in enumerate(items, 1):
+    for it in items:
         q = it["q"]
-        lineas = [f"[{k}] PREGUNTA: {q['pregunta']}", f"RESULTADO: {it['resultado']}"]
+        lineas = [f"[{it['n']}] PREGUNTA: {q['pregunta']}", f"RESULTADO: {it['resultado']}"]
+        lineas += [f"- Cubrió: {c}" for c in it["cubiertas"]]
         lineas += [f"- Le faltó: {f}" for f in it["faltas"]]
         lineas += [f"- Error: {e}" for e in it["errores"]]
         lineas.append(f"RESPUESTA DE REFERENCIA: {q.get('referencia', '')}")
         bloques.append("\n".join(lineas))
-    return f"""Sos tutor de la materia {m.get('titulo', '')}. El alumno terminó la autoevaluación de la clase {clase.get('n')} ({clase.get('titulo', '')}). Abajo están solo las preguntas que no respondió bien, con lo que le faltó y sus errores.
+    return f"""Sos tutor de la materia {m.get('titulo', '')}. El alumno respondió la autoevaluación de la clase {clase.get('n')} ({clase.get('titulo', '')}). Abajo están TODAS sus preguntas calificadas, las que hizo bien y las que no, con lo que cubrió, lo que le faltó y sus errores.
+
+Objetivo: decirle qué CONCEPTOS tiene que reforzar mirando todas las preguntas juntas, no pregunta por pregunta. Un mismo concepto aparece en varias preguntas: si lo falló en una pero lo explicó bien en otras, lo sabe a medias; si lo falló siempre, no lo sabe.
 
 TAREA:
-1. "diagnostico": 1 o 2 oraciones con el patrón de sus fallas (qué tipo de cosa le falla: confunde dos conceptos, no explica causas, no da el mecanismo, no sabe un tema). Nada de resumen general.
-2. "reforzar": de 1 a 5 temas, del más grave al menos grave. Agrupá preguntas que fallan por lo mismo. Para cada tema:
+1. "temas": de 1 a 5 conceptos que falló al menos una vez, del más grave al menos grave. Un concepto, no una pregunta: juntá en un tema todas las preguntas donde aparece ese concepto.
    - "tema": nombre corto del concepto (hasta 6 palabras).
-   - "que_fallo": qué hizo mal o le faltó, concreto (hasta 20 palabras).
-   - "como_es": la explicación correcta, en 1 a 3 oraciones claras, sacada SOLO de las respuestas de referencia. Que se entienda sin haber leído nada más.
-   - "practica": una acción concreta para fijarlo, de hasta 20 palabras (por ejemplo: "Explicá en 3 líneas la diferencia entre X e Y con un ejemplo de cada una").
+   - "preguntas": los números [n] de TODAS las preguntas donde aparece el concepto, tanto las que lo tuvo bien como las que lo tuvo mal.
+   - "que_fallo": qué hace mal con ese concepto, en general (hasta 20 palabras). Si en otras preguntas lo hizo bien, decí qué parte sí maneja.
+   - "como_es": la explicación correcta en 1 a 3 oraciones, sacada SOLO de las respuestas de referencia.
+   - "practica": un ejercicio concreto sobre un caso de las preguntas, hasta 20 palabras. Malo: "Revisar ejemplos de X". Bueno: "Escribí la línea D del pago con timeout y marcá dónde va el identificador estable".
+2. "firmes": hasta 4 conceptos que explicó bien en todas las preguntas donde aparecen, con sus números de pregunta. Solo si hay evidencia en "Cubrió". Un concepto que está en "temas" no puede estar en "firmes".
+3. "diagnostico": 1 o 2 oraciones con el patrón general de sus fallas (confunde dos conceptos, no da el mecanismo, no explica causas, no sabe un tema). Nada de resumen de la clase.
 No agregues información que no esté en las respuestas de referencia.
 
 {ESTILO}
 
 {chr(10).join(bloques)}
 
-Respondé solo con JSON: {{"diagnostico":"...","reforzar":[{{"tema":"...","que_fallo":"...","como_es":"...","practica":"..."}}]}}"""
+Respondé solo con JSON: {{"diagnostico":"...","temas":[{{"tema":"...","preguntas":[1,3],"que_fallo":"...","como_es":"...","practica":"..."}}],"firmes":[{{"tema":"...","preguntas":[2]}}]}}"""
 
 
 def http_json(url, body, headers=None, timeout=240):
@@ -436,7 +445,7 @@ def explicar(slug, n, texto, pregunta="", historial=None, proveedor=None):
 
 
 def repaso(slug, n, items, proveedor=None):
-    """Resumen personalizado de los errores de una clase, a partir de las preguntas que salieron mal."""
+    """Qué reforzar en una clase, por concepto, mirando todas las preguntas calificadas (bien y mal)."""
     d = materia_dir(slug)
     if not d:
         return 404, {"error": "Materia no encontrada"}
@@ -444,24 +453,50 @@ def repaso(slug, n, items, proveedor=None):
     clase = next((c for c in m.get("clases", []) if int(c["n"]) == int(n)), {"n": n})
     q = d / "preguntas" / f"clase{int(n):02d}.json"
     qs = json.loads(q.read_text(encoding="utf-8")) if q.exists() else []
-    RES = {0: "no la sabía", 1: "a medias"}
-    datos = []
-    for it in items[:30]:
+    RES = {0: "mal o no la sabía", 1: "a medias", 2: "bien"}
+    datos, ver = [], {}
+    for it in items[:40]:
         i = int(it.get("i", -1))
-        if not (0 <= i < len(qs)) or it.get("veredicto") not in (0, 1):
+        if not (0 <= i < len(qs)) or it.get("veredicto") not in (0, 1, 2) or (i + 1) in ver:
             continue
+        v = it["veredicto"]
         faltas = [str(f)[:240] for f in it.get("faltas") or [] if str(f).strip()][:6]
         errores = [str(e)[:300] for e in it.get("errores") or [] if str(e).strip()][:4]
-        if not faltas and not errores:
+        cubiertas = [str(c)[:240] for c in it.get("cubiertas") or [] if str(c).strip()][:6]
+        if v < 2 and not faltas and not errores:
             # Sin corrección ("No la sé" o autocalificada): todo lo que pedía la pregunta es a repasar.
             faltas = list(qs[i].get("claves") or [])
-        datos.append({"q": qs[i], "resultado": RES[it["veredicto"]], "faltas": faltas, "errores": errores})
-    if not datos:
+        if v == 2 and not cubiertas:
+            cubiertas = list(qs[i].get("claves") or [])
+        ver[i + 1] = v
+        datos.append({"n": i + 1, "q": qs[i], "resultado": RES[v], "faltas": faltas, "errores": errores, "cubiertas": cubiertas})
+    if not any(v < 2 for v in ver.values()):
         return 400, {"error": "No hay preguntas mal o a medias para resumir."}
     data = parse_json(llamar_modelo(prompt_repaso(m, clase, datos), proveedor or CFG["proveedor"], ESQUEMA_REPASO))
-    reforzar = [{k: corto(r.get(k), 500) for k in ("tema", "que_fallo", "como_es", "practica")}
-                for r in data.get("reforzar", []) if isinstance(r, dict) and str(r.get("tema", "")).strip()][:5]
-    return 200, {"diagnostico": corto(data.get("diagnostico"), 400), "reforzar": reforzar}
+
+    def nums(r):
+        return sorted({int(x) for x in r.get("preguntas") or [] if str(x).lstrip("-").isdigit() and int(x) in ver})
+    temas = []
+    for r in data.get("temas", []):
+        if not isinstance(r, dict) or not str(r.get("tema", "")).strip():
+            continue
+        ps = nums(r)
+        mal, bien = [x for x in ps if ver[x] < 2], [x for x in ps if ver[x] == 2]
+        if ps and not mal:
+            continue  # el modelo lo puso como flojo pero en esas preguntas le fue bien
+        t = {k: corto(r.get(k), 500) for k in ("tema", "que_fallo", "como_es", "practica")}
+        # El estado sale de los resultados, no del modelo.
+        t.update(mal=mal, bien=bien, estado="inestable" if bien else "flojo")
+        temas.append(t)
+    temas.sort(key=lambda t: (-len(t["mal"]), t["estado"] != "flojo"))
+    flojos = {t["tema"].strip().lower() for t in temas}
+    firmes = []
+    for r in data.get("firmes", []):
+        if isinstance(r, dict) and str(r.get("tema", "")).strip():
+            ps = nums(r)
+            if ps and all(ver[x] == 2 for x in ps) and r["tema"].strip().lower() not in flojos:
+                firmes.append({"tema": corto(r["tema"], 60), "preguntas": ps})
+    return 200, {"diagnostico": corto(data.get("diagnostico"), 400), "temas": temas[:5], "firmes": firmes[:4]}
 
 # ---------------------------------------------------------------- lectura en voz alta
 # Tres motores generan el audio en el servidor:
