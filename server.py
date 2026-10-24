@@ -210,7 +210,7 @@ ESQUEMA = {
     "properties": {
         "claves": {"type": "array", "items": {"type": "object", "properties": {
             "n": {"type": "integer"}, "estado": {"type": "string", "enum": ["presente", "parcial", "ausente"]},
-            "falta": {"type": "string"}}, "required": ["n", "estado", "falta"]}},
+            "dijiste": {"type": "string"}, "falta": {"type": "string"}}, "required": ["n", "estado", "dijiste", "falta"]}},
         "errores": {"type": "array", "items": {"type": "object", "properties": {
             "dijiste": {"type": "string"}, "correcto": {"type": "string"}}, "required": ["dijiste", "correcto"]}},
     },
@@ -251,11 +251,13 @@ CRITERIOS DE EVALUACIÓN:
    - "presente": el alumno comprende la idea central y la expresa correctamente (con sus palabras, ejemplos válidos o lenguaje coloquial).
    - "parcial": la idea está presente pero falta una distinción conceptual importante o quedó a medias.
    - "ausente": no se menciona o está conceptualmente equivocada.
-2. "falta": SOLO para puntos "parcial" o "ausente". Escribí una explicación pedagógica clara, lógica y sin contradicciones (de 10 a 25 palabras):
-   - Explicá qué parte faltó y cómo se formula o completa correctamente.
-   - PROHIBIDO generar contradicciones lógicas (como decir "se sabe timeout pero no que no llegó respuesta"). Si el alumno mencionó el concepto con sinónimos, marcalo "presente".
-   - PROHIBIDO usar palabras sueltas sin verbo ni contexto (como "reintento y respuesta perdida"). Escribí siempre una oración completa que enseñe cómo se dice.
-   - Si está "presente", dejá "" (vacío).
+2. Para cada punto "parcial" o "ausente" completá dos campos. Si está "presente", dejá los dos vacíos ("").
+   - "dijiste": qué escribió el alumno sobre ese punto, citando o parafraseando su respuesta en hasta 20 palabras. Si no lo mencionó, escribí exactamente "No lo mencionaste."
+   - "falta": una oración completa, de 12 a 30 palabras, que diga qué le faltó o qué quedó mal y cómo se dice bien, con un verbo y nombrando la parte de la respuesta a la que se refiere (por ejemplo, la F de la línea D). Tiene que entenderse sin ver el punto clave.
+     Mal: "reintento del cliente y respuesta perdida".
+     Bien: "En la F nombraste solo la caída del servidor; faltó incluir que el cliente reintenta y que la respuesta del servidor se puede perder."
+   - El alumno no ve los puntos clave numerados: nunca digas "punto 1" ni inventes rótulos como "en la A". Nombrá la idea con palabras ("en la ejecución donde se pierde la respuesta") o una letra de la línea D si el alumno la escribió (P, F, G, S, T).
+   - PROHIBIDO generar contradicciones lógicas. Si el alumno mencionó el concepto con sinónimos, marcalo "presente".
 3. "errores": lista de AFIRMACIONES TÉCNICAMENTE FALSAS hechas por el alumno.
    ATENCIÓN ESTRICTA:
    - Si el alumno no hizo ninguna afirmación técnicamente falsa, devolvé "errores": [].
@@ -282,7 +284,7 @@ ERRORES FRECUENTES QUE INVALIDAN:
 RESPUESTA DEL ALUMNO:
 {respuesta}
 
-Respondé solo con JSON: {{"claves":[{{"n":1,"estado":"presente|parcial|ausente","falta":"..."}}],"errores":[{{"dijiste":"...","correcto":"..."}}]}}"""
+Respondé solo con JSON: {{"claves":[{{"n":1,"estado":"presente|parcial|ausente","dijiste":"...","falta":"..."}}],"errores":[{{"dijiste":"...","correcto":"..."}}]}}"""
 
 
 ESQUEMA_REPASO = {
@@ -383,8 +385,14 @@ def corregir(slug, n, i, respuesta, proveedor=None, qid=None):
         c = estados.get(k, {})
         estado = c.get("estado") if c.get("estado") in ("presente", "parcial", "ausente") else "ausente"
         puntos += {"presente": 1, "parcial": 0.5}.get(estado, 0)
-        falta = "" if estado == "presente" else corto(c.get("falta") or c.get("comentario"))
-        detalle.append({"texto": texto, "estado": estado, "falta": falta})
+        dijiste = falta = ""
+        if estado != "presente":
+            dijiste = corto(c.get("dijiste"), 200) or ("No lo mencionaste." if estado == "ausente" else "")
+            falta = corto(c.get("falta") or c.get("comentario"), 300)
+            # Si el modelo devuelve un fragmento sin verbo, se usa el punto clave, que es una oración completa.
+            if len(falta.split()) < 8:
+                falta = ("Faltó explicar completo esto: " if estado == "parcial" else "Faltó decir esto: ") + texto
+        detalle.append({"texto": texto, "estado": estado, "dijiste": dijiste, "falta": falta})
     errores = []
     for e in data.get("errores", []):
         if isinstance(e, dict) and str(e.get("dijiste", "")).strip():

@@ -372,3 +372,6 @@ table + .ed-quitar{display:block;margin:-6px 0 14px}
 .fin .perso .tag{vertical-align:middle}
 .fin-det{margin-top:14px}
 .fin-det>summary{cursor:pointer;font:700 1rem var(--sign-font)}
+.claves .pt p{margin:0 0 4px}
+.claves .pt p:last-child{margin-bottom:0}
+.claves .pt b{font-weight:700}

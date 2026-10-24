@@ -238,7 +238,12 @@
   /* "Te faltó" y "Está mal" de una corrección; se usa en la corrección y en el resumen final. */
   function fallas(g) {
     const faltan = (g.claves || []).filter(x => x.estado !== "presente"), errs = errList(g);
-    return (faltan.length ? `<span class="lab">Te faltó</span><ul class="claves">${faltan.map(x => `<li class="${x.estado}"><span class="mk">${x.estado === "parcial" ? "a medias" : "falta"}</span><span>${esc(faltaTxt(x))}</span></li>`).join("")}</ul>` : "")
+    // Cada punto: qué se pedía (el punto clave), qué dijiste y qué faltó. Las correcciones viejas no tienen "dijiste".
+    const item = x => `<li class="${x.estado}"><span class="mk">${x.estado === "parcial" ? "a medias" : "falta"}</span><div class="pt">`
+      + `<p><b>Se pedía:</b> ${esc(x.texto)}</p>`
+      + (x.dijiste ? `<p><b>Vos dijiste:</b> ${esc(x.dijiste)}</p>` : "")
+      + (x.falta && x.falta !== x.texto ? `<p><b>Qué faltó:</b> ${esc(x.falta)}</p>` : "") + `</div></li>`;
+    return (faltan.length ? `<span class="lab">Te faltó</span><ul class="claves">${faltan.map(item).join("")}</ul>` : "")
       + (errs.length ? `<span class="lab">Está mal</span><ul class="mal">${errs.map(e => `<li><span>Dijiste: ${esc(e.dijiste)}</span>${e.correcto ? `<span class="ok-t">Es así: ${esc(e.correcto)}</span>` : ""}</li>`).join("")}</ul>` : "");
   }
   function renderVerdict(k, g) {
@@ -301,7 +306,7 @@
   async function armarFin(c) {
     if (ARMANDO.has(c.n)) return;
     const todas = rated(c);
-    const items = todas.map(x => { const g = S["g-" + x.k]; return { i: x.i, veredicto: x.v, cubiertas: g ? (g.claves || []).filter(y => y.estado === "presente").map(y => y.texto) : [], faltas: g ? (g.claves || []).filter(y => y.estado !== "presente").map(faltaTxt) : [], errores: g ? errList(g).map(y => y.dijiste + (y.correcto ? " (lo correcto: " + y.correcto + ")" : "")) : [] }; });
+    const items = todas.map(x => { const g = S["g-" + x.k]; return { i: x.i, id: x.q.id, veredicto: x.v, cubiertas: g ? (g.claves || []).filter(y => y.estado === "presente").map(y => y.texto) : [], faltas: g ? (g.claves || []).filter(y => y.estado !== "presente").map(faltaTxt) : [], errores: g ? errList(g).map(y => y.dijiste + (y.correcto ? " (lo correcto: " + y.correcto + ")" : "")) : [] }; });
     ARMANDO.add(c.n); finRender(c);
     try {
       const r = await fetch("/api/repaso", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ materia: M.slug, clase: c.n, items }) });
