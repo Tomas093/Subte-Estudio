@@ -368,3 +368,8 @@ table + .ed-quitar{display:block;margin:-6px 0 14px}
 .vivo{padding:10px 14px;border:1px dashed var(--bad);border-radius:10px;background:color-mix(in srgb,var(--bad-soft) 55%,var(--panel));font:400 1rem/1.5 var(--read-font)}
 .vivo .v-lab{display:block;font:700 .74rem var(--sign-font);color:var(--bad);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px}
 .vivo .v-tent{color:var(--muted)}
+.fin .perso .ev{display:block;font-size:.85rem;color:var(--muted);margin:2px 0 4px}
+.fin .perso .firmes .ev{display:inline}
+.fin .perso .tag{vertical-align:middle}
+.fin-det{margin-top:14px}
+.fin-det>summary{cursor:pointer;font:700 1rem var(--sign-font)}
