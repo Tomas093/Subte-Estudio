@@ -49,6 +49,17 @@ Cuando tildás los cuatro pasos, la estación se pinta en el mapa.
 
 Si una voz falla (por ejemplo, Microsoft sin internet o Gemini sin créditos), la barra lo dice y te ofrece probar con otra.
 
+### Sacar del resumen lo que no te sirve
+
+1. Arriba del resumen, tocá **Editar resumen**.
+2. Al lado de cada párrafo, punto de lista y tabla aparece **Quitar**; al lado de cada título, **Quitar sección** (saca el título y todo lo que tiene abajo hasta el próximo título). Pasá el mouse por encima y se tacha en rojo lo que se va a borrar.
+3. Se guarda solo al tocar. Si te equivocaste, **Deshacer**.
+4. **Editar el texto** abre el resumen como texto para cambiar palabras o agregar algo. Es Markdown: `## Título`, `- punto`, `**negrita**`. Tocá **Guardar el texto**.
+5. **Volver al original** deja el resumen como estaba antes de tu primera edición.
+6. **Listo** sale del modo edición.
+
+Si una sección es la que explica alguna pregunta ("Dónde se explica"), te avisa antes de quitarla. El original queda guardado en la carpeta `resumen/originales/` de la materia, y cada versión anterior en `resumen/versiones/` (las últimas 30 por clase).
+
 ### Si no entendés una parte: Explicame
 
 1. Seleccioná con el mouse (o manteniendo apretado en el celular) la parte del resumen que no entendés.
@@ -76,7 +87,7 @@ A la derecha del resumen, debajo de "Pasos en esta estación", está **Mis apunt
 
 ### Cómo responder una pregunta
 
-1. Escribí tu respuesta como en el examen (o tocá **Dictar** y hablá). Mínimo 8 palabras.
+1. Escribí tu respuesta como en el examen. Mínimo 8 palabras. Para dictarla, tocá el **micrófono**, hablá y tocá el cuadradito para terminar; en unos segundos aparece el texto.
 2. Tocá **Corregir**. Tarda unos segundos.
 3. Leé la corrección:
    - **Nota** arriba (sobre 10) y si estuvo bien, a medias o mal.
@@ -131,7 +142,7 @@ El agente revisa todas las preguntas contra el resumen: si falta la explicación
 ### Si algo no anda
 
 - **"Corrector apagado"**: con Gemini, revisá que `GEMINI_API_KEY` esté en `.env` y reiniciá el servidor (Ctrl+C y `python3 server.py`). Con Ollama, abrí la app de Ollama y corré `ollama list` para ver que el modelo esté bajado.
-- **No aparece el botón Dictar**: falta configurar whisper (ver el README).
+- **No aparece el micrófono**: falta configurar whisper (ver el README).
 - **La página no carga**: el servidor no está corriendo. Volvé a correr `python3 server.py`.
 - **Cambiaron las preguntas y no se ven**: recargá la página (Cmd+R o F5).
 - **Tu progreso** se guarda solo, en la carpeta `progreso/` del proyecto, y en `progreso/copias/` queda una copia por día (las últimas 14). No hace falta guardar nada a mano. Para recuperar un día anterior: con el servidor apagado, copiá el archivo de ese día de `progreso/copias/` a `progreso/<materia>.json`, borrá los datos del sitio en el navegador y volvé a abrir.

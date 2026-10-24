@@ -41,6 +41,8 @@
   const ICON = {
     video: '<svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><rect x="1.5" y="3.5" width="17" height="13" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 7.2v5.6l4.6-2.8z" fill="currentColor"/></svg>',
     audio: '<svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 11v-1a6 6 0 0 1 12 0v1" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="2.5" y="10.5" width="4" height="6" rx="1.5" fill="currentColor"/><rect x="13.5" y="10.5" width="4" height="6" rx="1.5" fill="currentColor"/></svg>',
+    mic: '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="2.5" width="7" height="12" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3.5M8.5 21.5h7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>',
+    stop: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="2" fill="currentColor"/></svg>',
     check: '<svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M7 13.5l4 4 8-9" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
   };
 
@@ -141,6 +143,7 @@
     if (EX && +EX.n !== +current()) { EX = null; pintarEx(); }
     document.body.classList.remove("notas-abiertas");
     const c = byN(current()), f = fase(c), ids = stepIds(c);
+    if (ED && +ED.n !== +c.n) ED = null;
     const qs = (c.preguntas || []).map((q, i) => question(c, q, i)).join("");
     $("view-ruta").innerHTML = `
     <div class="station" style="--lc:var(--f${f.id})">
@@ -149,8 +152,9 @@
           <div class="st-meta"><span class="chip">Línea ${esc(f.linea || f.id)} · ${esc(f.nombre)}</span>${c.prioridad === "alta" ? '<span class="chip hot">pesa mucho en el examen</span>' : '<span class="chip">peso medio</span>'}</div></div></div>
         ${c.por_que ? `<p class="why">${esc(c.por_que)}</p>` : ""}
         ${c.marco ? `<div class="dline">${esc(c.marco)}</div>` : ""}
-        <div class="sec-row"><h3 class="sec">Resumen de la clase</h3>${c.resumen_md ? `<button class="btn escuchar" data-escuchar="1" aria-label="Escuchar el resumen en voz alta">Escuchar el resumen</button>` : ""}</div>
-        <div class="read">${md(c.resumen_md) || '<p class="empty">Todavía no hay resumen para esta clase.</p>'}</div>
+        <div class="sec-row"><h3 class="sec">Resumen de la clase</h3><span class="sec-acts">${c.resumen_md ? `<button class="btn" data-editar="abrir">Editar resumen</button><button class="btn escuchar" data-escuchar="1" aria-label="Escuchar el resumen en voz alta">Escuchar el resumen</button>` : ""}</span></div>
+        <div class="ed-bar" id="edBar" hidden></div>
+        <div class="read" id="resumen"></div>
         <h3 class="sec">Autoevaluación · ${plural((c.preguntas || []).length, "pregunta")}</h3>
         <p class="qintro" id="qintro">${introText()}</p>
         ${qs}
@@ -178,7 +182,7 @@
       </aside>
       <button class="notas-fab" data-notas="abrir">Mis apuntes</button>
     </div>`;
-    refreshChecks(); refreshQuestions(c); finRender(c);
+    pintarResumen(c); refreshChecks(); refreshQuestions(c); finRender(c);
   }
   function question(c, q, i) {
     const k = "h" + c.n + "-" + i, draft = S["a-" + k] || "";
@@ -186,7 +190,7 @@
     <div class="q-body">
       <textarea id="ta-${k}" data-draft="${k}" aria-label="Tu respuesta a la pregunta ${i + 1}" placeholder="Tu respuesta… (o dictala)">${esc(draft)}</textarea>
       <div class="q-actions">
-        <button class="btn rec" data-rec="${k}" aria-pressed="false" ${ST.transcripcion ? "" : "hidden"}><span class="dot" aria-hidden="true"></span><span>Dictar</span></button>
+        <button class="mic" data-rec="${k}" aria-pressed="false" aria-label="Dictar tu respuesta" title="Dictar tu respuesta" ${ST.transcripcion ? "" : "hidden"}>${ICON.mic}</button>
         <button class="btn primary" data-grade="${k}" ${ST.corrector ? "" : "hidden"}>Corregir</button>
         <button class="btn" data-ref="${k}" aria-expanded="false" ${words(draft) < 8 && !S["u-" + k] ? "disabled" : ""}>Ver respuesta de referencia</button>
         <button class="btn ghost" data-dunno="${k}">No la sé</button>
@@ -300,6 +304,12 @@
 
   /* ---------- dictado ---------- */
   let rec = null;
+  function micEstado(btn, estado) {
+    const L = { "": "Dictar tu respuesta", grabando: "Detener el dictado", transcribiendo: "Transcribiendo tu respuesta…" }[estado];
+    btn.dataset.estado = estado; btn.setAttribute("aria-pressed", String(estado === "grabando"));
+    btn.setAttribute("aria-label", L); btn.title = L; btn.disabled = estado === "transcribiendo";
+    btn.innerHTML = estado === "grabando" ? ICON.stop : estado === "transcribiendo" ? "" : ICON.mic;
+  }
   async function toggleRec(k, btn) {
     if (rec && rec.k === k) { rec.mr.stop(); return; }
     if (rec) return;
@@ -308,11 +318,11 @@
     catch (e) { $("out-" + k).innerHTML = `<p class="thinking">No pude usar el micrófono. Revisá el permiso del navegador.</p>`; return; }
     const mr = new MediaRecorder(stream), chunks = [];
     rec = { k, mr };
-    btn.setAttribute("aria-pressed", "true"); btn.lastElementChild.textContent = "Detener";
+    micEstado(btn, "grabando");
     mr.ondataavailable = e => e.data.size && chunks.push(e.data);
     mr.onstop = async () => {
       stream.getTracks().forEach(t => t.stop()); rec = null;
-      btn.setAttribute("aria-pressed", "false"); btn.lastElementChild.textContent = "Transcribiendo…"; btn.disabled = true;
+      micEstado(btn, "transcribiendo");
       try {
         const blob = new Blob(chunks, { type: mr.mimeType || "audio/webm" });
         const r = await fetch("/api/transcribir", { method: "POST", headers: { "Content-Type": blob.type }, body: blob });
@@ -320,7 +330,7 @@
         const ta = $("ta-" + k); ta.value = (ta.value.trim() ? ta.value.trim() + " " : "") + d.texto.trim();
         ta.dispatchEvent(new Event("input", { bubbles: true }));
       } catch (e) { $("out-" + k).innerHTML = `<p class="thinking">${esc(e.message)}</p>`; }
-      finally { btn.disabled = false; btn.lastElementChild.textContent = "Dictar"; }
+      finally { micEstado(btn, ""); }
     };
     mr.start();
   }
@@ -361,6 +371,91 @@
       (luego.length ? `<h3 class="sec">Próximos repasos · ${luego.length}</h3><ul class="weak">${luego.map(x => item(x, false)).join("")}</ul>` : "") +
       (aprendidas ? `<p class="lead">Preguntas aprendidas: ${aprendidas}.</p>` : "") +
       (fins.length ? `<h3 class="sec">Resúmenes de tus errores</h3><ul class="weak">${fins.map(c => { const d = S["fin-" + c.n].data; return `<li>${roundel(c)}<div><span class="tag">Clase ${c.n} · ${esc(c.titulo)}</span><b>${esc(d.diagnostico)}</b><p class="temas">Reforzar: ${esc((d.reforzar || []).map(x => x.tema).join(" · "))}</p><div class="acts"><button data-gofin="${c.n}">Leer el resumen completo</button></div></div></li>`; }).join("")}</ul>` : "");
+  }
+
+  /* ---------- editar el resumen ----------
+     "Quitar" borra del archivo .md las líneas de ese bloque (markdown.js marca cada bloque con data-l).
+     En un título borra la sección entera, hasta el próximo título del mismo nivel o más alto. */
+  let ED = null;  // { n, pila: [md anteriores, para deshacer], texto: true si está editando el texto a mano }
+  const lead = l => l.match(/^\s*/)[0].length;
+  function pintarResumen(c) {
+    const read = $("resumen"); if (!read) return;
+    read.innerHTML = md(c.resumen_md) || '<p class="empty">Todavía no hay resumen para esta clase.</p>';
+    read.classList.toggle("editando", !!ED);
+    const bar = $("edBar"); bar.hidden = !ED;
+    document.querySelectorAll("[data-editar='abrir']").forEach(b => { b.hidden = !!ED; });
+    if (!ED) return;
+    bar.innerHTML = `<p><b>Editando el resumen.</b> Tocá <b>Quitar</b> en lo que no te sirva. Los cambios se guardan solos.</p>
+      <div class="ed-acts"><button class="btn" data-editar="deshacer" ${ED.pila.length ? "" : "disabled"}>Deshacer</button><button class="btn" data-editar="texto">${ED.texto ? "Volver a Quitar" : "Editar el texto"}</button>${c.resumen_editado ? `<button class="btn ghost" data-editar="original">Volver al original</button>` : ""}<button class="btn primary" data-editar="listo">Listo</button></div>`;
+    if (ED.texto) {
+      read.innerHTML = `<textarea class="ed-texto" aria-label="Texto del resumen en Markdown">${esc(c.resumen_md)}</textarea>
+        <p class="ed-tip">Es Markdown: <code>## Título</code> para una sección, <code>- </code> para un punto, <code>**negrita**</code>. </p>
+        <div class="ed-acts"><button class="btn primary" data-editar="guardar-texto">Guardar el texto</button></div>`;
+      return;
+    }
+    read.querySelectorAll("[data-l],li[data-l0]").forEach(el => {
+      const b = document.createElement("button");
+      b.className = "ed-quitar"; b.dataset.editar = "quitar";
+      const h = /^H\d$/.test(el.tagName), li = el.tagName === "LI";
+      b.dataset.tipo = h ? "h" : li ? "li" : "b";
+      b.dataset.a = li ? el.dataset.l0 : el.dataset.l.split("-")[0];
+      b.dataset.b = li ? "" : el.dataset.l.split("-")[1];
+      b.dataset.nivel = el.dataset.nivel || "";
+      b.textContent = h ? "Quitar sección" : "Quitar";
+      if (el.tagName === "TABLE") el.insertAdjacentElement("afterend", b);
+      else if (li) el.insertBefore(b, el.querySelector(":scope > ul, :scope > ol"));
+      else el.appendChild(b);
+    });
+  }
+  function rango(lines, b) {
+    let a = +b.dataset.a, fin;
+    if (b.dataset.tipo === "h") {
+      const nv = +b.dataset.nivel; fin = lines.length;
+      for (let j = a + 1; j < lines.length; j++) { const m = lines[j].match(/^(#{1,4})\s/); if (m && m[1].length <= nv) { fin = j; break; } }
+    } else if (b.dataset.tipo === "li") {
+      const ind = lead(lines[a]); fin = a + 1;
+      while (fin < lines.length) {
+        if (!lines[fin].trim()) { let k = fin; while (k < lines.length && !lines[k].trim()) k++; if (k < lines.length && lead(lines[k]) > ind) { fin = k; continue; } break; }
+        if (lead(lines[fin]) > ind) fin++; else break;
+      }
+    } else fin = +b.dataset.b;
+    return [a, fin];
+  }
+  async function guardarResumen(c, nuevo, deshacer) {
+    if (window.Lector) Lector.parar();
+    const antes = c.resumen_md;
+    try {
+      const r = await fetch(`/api/resumen/${M.slug}/${c.n}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ md: nuevo }) });
+      const d = await r.json(); if (!r.ok) throw new Error(d.error || "No se pudo guardar.");
+      if (!deshacer) ED.pila.push(antes);
+      c.resumen_md = nuevo; c.resumen_editado = true;
+    } catch (e) { alert("No se pudo guardar el resumen: " + e.message); }
+    pintarResumen(c);
+  }
+  async function editar(accion, b) {
+    const c = byN(current());
+    if (accion === "abrir") { ED = { n: c.n, pila: [], texto: false }; pintarResumen(c); $("edBar").scrollIntoView({ block: "nearest" }); return; }
+    if (!ED) return;
+    if (accion === "listo") { ED = null; pintarResumen(c); return; }
+    if (accion === "texto") { ED.texto = !ED.texto; pintarResumen(c); return; }
+    if (accion === "guardar-texto") { ED.texto = false; return guardarResumen(c, document.querySelector(".ed-texto").value); }
+    if (accion === "deshacer" && ED.pila.length) return guardarResumen(c, ED.pila.pop(), true);
+    if (accion === "original") {
+      if (!confirm("¿Volver al resumen original? Se pierden tus cambios (igual quedan copias en la carpeta resumen/versiones/ de la materia).")) return;
+      const r = await fetch(`/api/resumen/${M.slug}/${c.n}/original`, { method: "POST" }), d = await r.json();
+      if (!r.ok) return alert(d.error || "No se pudo restaurar.");
+      ED.pila.push(c.resumen_md); c.resumen_md = d.md; if (window.Lector) Lector.parar(); pintarResumen(c); return;
+    }
+    if (accion === "quitar") {
+      const lines = c.resumen_md.split("\n"), [a, fin] = rango(lines, b);
+      if (b.dataset.tipo === "h") {
+        const titulos = lines.slice(a, fin).filter(l => /^#{1,4}\s/.test(l)).map(norm);
+        const usan = (c.preguntas || []).filter(q => q.donde && titulos.includes(norm(q.donde)));
+        if (usan.length && !confirm(`Esta sección explica ${plural(usan.length, "pregunta")} de la autoevaluación (el enlace "Dónde se explica"). Si la quitás, ese enlace deja de funcionar. ¿La quitás igual?`)) return;
+      }
+      const nuevo = lines.slice(0, a).concat(lines.slice(fin)).join("\n").replace(/\n{3,}/g, "\n\n").replace(/^\n+/, "");
+      return guardarResumen(c, nuevo);
+    }
   }
 
   /* ---------- mis apuntes ---------- */
@@ -505,6 +600,7 @@
       document.querySelectorAll(`[data-rate="${k}"]`).forEach(b => b.setAttribute("aria-pressed", String(+b.dataset.v === 0))); weakCount(); finRender(kq(k).c); return;
     }
     if (t.dataset.notas) return notas(t.dataset.notas, t.dataset.n);
+    if (t.dataset.editar) return editar(t.dataset.editar, t);
     if (t.dataset.escuchar) return Lector.empezar({ read: document.querySelector("#view-ruta .read"), slug: M.slug, motores: ST.voz_motores, clases: M.clases, md });
     if (t.dataset.donde) return irDonde(t.dataset.dondeC, t.dataset.donde);
     if (t.dataset.fin) return armarFin(byN(t.dataset.fin));

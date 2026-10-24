@@ -94,6 +94,7 @@ def cargar_materia(slug):
         r = d / "resumen" / f"clase{nn}.md"
         q = d / "preguntas" / f"clase{nn}.json"
         c["resumen_md"] = r.read_text(encoding="utf-8") if r.exists() else ""
+        c["resumen_editado"] = (d / "resumen" / "originales" / f"clase{nn}.md").exists()
         c["preguntas"] = json.loads(q.read_text(encoding="utf-8")) if q.exists() else []
     guia = d / "resumen" / "como-responder.md"
     m["como_responder_md"] = guia.read_text(encoding="utf-8") if guia.exists() else ""
@@ -112,6 +113,51 @@ def pregunta(slug, n, i):
         return m, None
     clase = next((c for c in m.get("clases", []) if int(c["n"]) == int(n)), {})
     return m, dict(qs[i], clase=clase)
+
+# ---------------------------------------------------------------- editar el resumen
+# La primera vez que se edita una clase, el resumen original se guarda en resumen/originales/.
+# Cada guardado deja la versión anterior en resumen/versiones/ (las últimas 30 por clase).
+
+VERSIONES_RESUMEN = 30
+
+
+def guardar_resumen(slug, n, texto):
+    d = materia_dir(slug)
+    if not d:
+        return 404, {"error": "Materia no encontrada"}
+    nn = f"{int(n):02d}"
+    r = d / "resumen" / f"clase{nn}.md"
+    texto = str(texto).replace("\r\n", "\n")
+    if len(texto) > 1_000_000:
+        return 413, {"error": "El resumen es demasiado largo."}
+    if r.exists():
+        orig = d / "resumen" / "originales" / f"clase{nn}.md"
+        if not orig.exists():
+            orig.parent.mkdir(exist_ok=True)
+            shutil.copyfile(r, orig)
+        ver = d / "resumen" / "versiones"
+        ver.mkdir(exist_ok=True)
+        ahora = time.time()
+        shutil.copyfile(r, ver / f"clase{nn}-{time.strftime('%Y%m%d-%H%M%S', time.localtime(ahora))}-{int(ahora * 1000) % 1000:03d}.md")
+        for viejo in sorted(ver.glob(f"clase{nn}-*.md"))[:-VERSIONES_RESUMEN]:
+            viejo.unlink()
+    r.parent.mkdir(exist_ok=True)
+    tmp = r.with_suffix(".tmp")
+    tmp.write_text(texto, encoding="utf-8")
+    os.replace(tmp, r)
+    return 200, {"ok": True}
+
+
+def restaurar_resumen(slug, n):
+    d = materia_dir(slug)
+    if not d:
+        return 404, {"error": "Materia no encontrada"}
+    nn = f"{int(n):02d}"
+    orig = d / "resumen" / "originales" / f"clase{nn}.md"
+    if not orig.exists():
+        return 404, {"error": "Este resumen no fue editado."}
+    code, out = guardar_resumen(slug, n, orig.read_text(encoding="utf-8"))
+    return code, dict(out, md=orig.read_text(encoding="utf-8"))
 
 # ---------------------------------------------------------------- progreso
 # Un archivo JSON por materia en progreso/ (o SUBTE_DATOS), más una copia por día en progreso/copias/.
@@ -730,6 +776,13 @@ class Handler(BaseHTTPRequestHandler):
                 except OSError as e:
                     return self.enviar(500, {"error": f"No se pudo guardar el progreso ({e})"})
                 return self.enviar(200, {"ok": True})
+            m = re.match(r"^/api/resumen/([a-z0-9-]+)/(\d+)(/original)?$", p)
+            if m:
+                if m.group(3):
+                    code, out = restaurar_resumen(m.group(1), m.group(2))
+                else:
+                    code, out = guardar_resumen(m.group(1), m.group(2), json.loads(cuerpo or b"{}").get("md", ""))
+                return self.enviar(code, out)
             m = re.match(r"^/api/voz/lote/([0-9a-f]{16})/cancelar$", p)
             if m:
                 if m.group(1) in LOTES:
