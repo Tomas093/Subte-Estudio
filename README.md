@@ -16,7 +16,7 @@ El contenido de cada materia (resúmenes, preguntas, plan) lo arman agentes de C
 - **Dónde se explica:** cada pregunta enlaza a la sección del resumen que la responde.
 - **Resumen de tus errores:** al calificar todas las preguntas de una clase, el corrector arma qué tenés que reforzar (qué fallaste, cómo es lo correcto y un ejercicio para fijarlo) y qué secciones releer.
 - **Escuchar el resumen:** lo lee en voz alta y resalta el párrafo que va leyendo, con velocidad ajustable. Voces: Microsoft (neuronal, acento argentino, gratis y sin clave), Piper (local, gratis y sin internet), Gemini (usa créditos) o la del sistema. Al empezar prepara en segundo plano el audio de toda la clase, o de todas, y lo guarda en `cache/`.
-- **Explicame:** seleccionás una parte del resumen y el modelo te la explica simple, con un ejemplo, usando el resumen de la clase como fuente; podés seguir preguntando y guardar la idea en tus apuntes.
+- **Explicame:** seleccionás una parte del resumen, escribís qué querés saber de ella (o usás una pregunta rápida, o lo dejás vacío) y el modelo te responde simple y con un ejemplo, usando el resumen de la clase como fuente; podés seguir preguntando y guardar la idea en tus apuntes.
 - **Mis apuntes:** al lado de cada resumen, un espacio por clase para escribir lo esencial; seleccionando texto del resumen se agrega con un toque. La pestaña "Mis apuntes" los junta todos y los descarga en Markdown.
 - **Dictado:** grabás tu respuesta con el micrófono y [whisper.cpp](https://github.com/ggml-org/whisper.cpp) la transcribe en tu compu.
 - **Horario:** plan por días hasta el examen.

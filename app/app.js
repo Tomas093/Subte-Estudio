@@ -419,7 +419,7 @@
     const sel = getSelection(), txt = sel.toString().replace(/\s+/g, " ").trim();
     sel.removeAllRanges(); selBar.hidden = true;
     if (b.dataset.sel === "nota") agregarNota(txt);
-    else explicar(txt);
+    else abrirEx(txt);
   });
 
   /* ---------- explicame ---------- */
@@ -427,6 +427,7 @@
   const exPanel = document.createElement("aside");
   exPanel.className = "explica"; exPanel.hidden = true; exPanel.setAttribute("aria-label", "Explicación");
   document.body.appendChild(exPanel);
+  const RAPIDAS = ["Explicámelo más simple", "Dame un ejemplo", "¿Por qué es así?", "¿Cómo lo escribo en el examen?"];
   function pintarEx() {
     if (!EX) { exPanel.hidden = true; document.body.classList.remove("con-explica"); return; }
     const corto = EX.texto.length > 220 ? EX.texto.slice(0, 220) + "…" : EX.texto;
@@ -436,21 +437,25 @@
       const d = h.data;
       return `<p class="ex-frase">${esc(d.en_una_frase)}</p>${d.explicacion ? `<div class="ex-txt">${md(d.explicacion)}</div>` : ""}${d.ejemplo ? `<p class="ex-ej"><b>Ejemplo.</b> ${esc(d.ejemplo)}</p>` : ""}<button class="lk" data-ex="nota" data-k="${k}">Agregar a mis apuntes</button>`;
     };
+    const inicio = !EX.hist.length, ocupado = EX.hist.some(h => !h.data && !h.error);
     exPanel.innerHTML = `<div class="ex-head"><h3>Explicame</h3><button class="ex-x" data-ex="cerrar">Cerrar</button></div>
       <blockquote>${esc(corto)}</blockquote>
-      <div class="ex-body">${EX.hist.map((h, k) => (h.p ? `<p class="ex-q">${esc(h.p)}</p>` : "") + bloque(h, k)).join("")}</div>
-      <form class="ex-form"><input type="text" placeholder="Preguntá algo más sobre esto…" aria-label="Otra pregunta sobre el fragmento" ${EX.hist.some(h => !h.data && !h.error) ? "disabled" : ""}><button class="btn" type="submit">Preguntar</button></form>`;
+      <div class="ex-body">${inicio ? `<p class="ex-ayuda">Escribí qué querés saber de esta parte, o dejalo vacío y tocá <b>Explicar</b> para una explicación general.</p>` : EX.hist.map((h, k) => (h.p ? `<p class="ex-q">${esc(h.p)}</p>` : "") + bloque(h, k)).join("")}</div>
+      <div class="ex-rapidas" role="group" aria-label="Preguntas rápidas">${RAPIDAS.map(q => `<button type="button" data-ex="rapida" data-q="${esc(q)}" ${ocupado ? "disabled" : ""}>${esc(q)}</button>`).join("")}</div>
+      <form class="ex-form"><textarea rows="2" placeholder="${inicio ? "Ej.: ¿en qué se diferencia de la propiedad de progreso?" : "Preguntá algo más sobre esto…"}" aria-label="Qué querés saber de este fragmento" ${ocupado ? "disabled" : ""}></textarea><button class="btn primary" type="submit" ${ocupado ? "disabled" : ""}>${inicio ? "Explicar" : "Preguntar"}</button></form>`;
     exPanel.hidden = false; document.body.classList.add("con-explica");
     const body = exPanel.querySelector(".ex-body"); body.scrollTop = body.scrollHeight;
+    if (!ocupado) exPanel.querySelector("textarea").focus({ preventScroll: true });
   }
-  async function explicar(texto, pregunta) {
-    if (!texto) return;
-    if (!pregunta) EX = { n: current(), texto, hist: [] };
-    const h = { p: pregunta || "", data: null }; EX.hist.push(h); pintarEx();
+  function abrirEx(texto) { if (!texto) return; EX = { n: current(), texto, hist: [] }; pintarEx(); }
+  async function preguntar(pregunta) {
+    if (!EX || EX.hist.some(h => !h.data && !h.error)) return;
+    if (!pregunta && EX.hist.length) return;  // sin texto solo vale para la primera, que pide la explicación general
+    const h = { p: pregunta, data: null }; EX.hist.push(h); pintarEx();
     const yo = EX;
     try {
-      const historial = EX.hist.filter(x => x.data).map(x => ({ p: x.p || "(explicación inicial)", r: x.data.en_una_frase + " " + x.data.explicacion }));
-      const r = await fetch("/api/explicar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ materia: M.slug, clase: EX.n, texto: EX.texto, pregunta: pregunta || "", historial }) });
+      const historial = EX.hist.filter(x => x.data).map(x => ({ p: x.p || "(explicación general)", r: x.data.en_una_frase + " " + x.data.explicacion }));
+      const r = await fetch("/api/explicar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ materia: M.slug, clase: EX.n, texto: EX.texto, pregunta, historial }) });
       const d = await r.json(); if (!r.ok) throw new Error(d.error || "No se pudo explicar.");
       h.data = d;
     } catch (e) { h.error = e.message; }
@@ -459,11 +464,13 @@
   exPanel.addEventListener("click", e => {
     const b = e.target.closest("[data-ex]"); if (!b) return;
     if (b.dataset.ex === "cerrar") { EX = null; pintarEx(); }
+    if (b.dataset.ex === "rapida") preguntar(b.dataset.q);
     if (b.dataset.ex === "nota") { const d = EX.hist[+b.dataset.k].data; agregarNota(d.en_una_frase); b.textContent = "Agregado a tus apuntes"; b.disabled = true; }
   });
-  exPanel.addEventListener("submit", e => {
-    e.preventDefault(); const i = exPanel.querySelector("input"), q = i.value.trim();
-    if (q && EX) explicar(EX.texto, q);
+  exPanel.addEventListener("submit", e => { e.preventDefault(); preguntar(exPanel.querySelector("textarea").value.trim()); });
+  // Enter manda; Shift+Enter hace un salto de línea.
+  exPanel.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey && e.target.matches(".ex-form textarea")) { e.preventDefault(); exPanel.querySelector(".ex-form").requestSubmit(); }
   });
 
   async function ayuda() {

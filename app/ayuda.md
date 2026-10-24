@@ -53,12 +53,15 @@ Si una voz falla (por ejemplo, Microsoft sin internet o Gemini sin créditos), l
 
 1. Seleccioná con el mouse (o manteniendo apretado en el celular) la parte del resumen que no entendés.
 2. Al lado aparecen dos botones. Tocá **Explicame**.
-3. Se abre un panel con:
-   - **la idea en una frase**, en negrita;
+3. Se abre un panel con lo que seleccionaste y un campo para escribir **qué querés saber de esa parte**. Por ejemplo: "¿en qué se diferencia de la propiedad de progreso?" o "¿esto qué tiene que ver con los puertos?". Mandalo con **Enter** o con el botón (Shift+Enter hace un salto de línea).
+   - Si lo dejás vacío y tocás **Explicar**, te da una explicación general.
+   - O tocá una pregunta rápida: **Explicámelo más simple**, **Dame un ejemplo**, **¿Por qué es así?**, **¿Cómo lo escribo en el examen?**
+4. La respuesta trae:
+   - **la respuesta en una frase**, en negrita;
    - una **explicación** simple, que define cada término técnico;
    - un **ejemplo** concreto.
-4. Si sigue sin cerrarte, escribí abajo otra pregunta ("¿y en qué se diferencia de…?", "dame otro ejemplo") y tocá **Preguntar**. Recuerda lo que ya te explicó.
-5. **Agregar a mis apuntes** copia la frase central a tus apuntes de la clase.
+5. Podés seguir preguntando sobre lo mismo: recuerda lo que ya te explicó.
+6. **Agregar a mis apuntes** copia la frase central a tus apuntes de la clase.
 
 Explica usando el resumen de la clase. Si agrega algo que no está en el resumen, lo marca con "Fuera del resumen:"; tomalo con cuidado, porque no viene del material de la cátedra. Usa el mismo corrector que configuraste (Gemini u Ollama).
 

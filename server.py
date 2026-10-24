@@ -323,7 +323,9 @@ ESQUEMA_EXPLICAR = {
 
 def prompt_explicar(m, clase, resumen, texto, pregunta, historial):
     previo = "\n\n".join(f"PREGUNTA ANTERIOR: {h.get('p', '')}\nTU RESPUESTA: {h.get('r', '')}" for h in historial)
-    pedido = f"El alumno ahora pregunta: {pregunta}" if pregunta else "El alumno no entendió esta parte. Explicásela."
+    pedido = (f"Sobre ese fragmento, el alumno pregunta esto en particular: {pregunta}\n"
+              "Respondé exactamente eso. \"en_una_frase\" es la respuesta directa a su pregunta."
+              if pregunta else "El alumno no entendió esta parte. Explicásela.")
     return f"""Sos un profesor particular de {m.get('titulo', '')}. El alumno está leyendo el resumen de la clase {clase.get('n')} ({clase.get('titulo', '')}) y seleccionó un fragmento.
 
 {pedido}
