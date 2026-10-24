@@ -8,6 +8,10 @@ progreso/
 # Audio generado de los resúmenes (se regenera si se borra)
 cache/
 
+# Voces gratis instaladas con scripts/instalar_voces.sh
+.venv-voces/
+voces/
+
 # Configuración local y temporales
 .env
 __pycache__/

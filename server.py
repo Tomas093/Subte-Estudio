@@ -52,7 +52,9 @@ CFG = {
     "gemini_modelo": os.environ.get("GEMINI_MODELO", "gemini-2.5-flash"),
     "tts_modelo": os.environ.get("GEMINI_TTS_MODELO", "gemini-2.5-flash-preview-tts"),
     "tts_voz": os.environ.get("GEMINI_VOZ", "Kore"),
-    "tts_paralelo": max(1, int(os.environ.get("GEMINI_VOZ_PARALELO", "3"))),
+    "tts_paralelo": max(1, int(os.environ.get("VOZ_PARALELO", os.environ.get("GEMINI_VOZ_PARALELO", "3")))),
+    "ms_voz": os.environ.get("MS_VOZ", "es-AR-ElenaNeural"),
+    "piper_voz": os.environ.get("PIPER_VOZ", ""),
     "tts_estilo": os.environ.get("GEMINI_VOZ_ESTILO", "Leé en voz alta el siguiente texto en español, con acento rioplatense, voz clara y ritmo tranquilo, como un profesor que le explica a un alumno. No agregues nada."),
     "whisper_bin": os.environ.get("WHISPER_BIN", "whisper-cli"),
     "whisper_modelo": os.path.expanduser(os.environ.get("WHISPER_MODELO", "")),
@@ -392,14 +394,24 @@ def repaso(slug, n, items, proveedor=None):
                 for r in data.get("reforzar", []) if isinstance(r, dict) and str(r.get("tema", "")).strip()][:5]
     return 200, {"diagnostico": corto(data.get("diagnostico"), 400), "reforzar": reforzar}
 
-# ---------------------------------------------------------------- lectura en voz alta (Gemini TTS)
+# ---------------------------------------------------------------- lectura en voz alta
+# Tres motores generan el audio en el servidor:
+#   gemini     la más natural; usa GEMINI_API_KEY y gasta créditos.
+#   microsoft  voces neuronales de Microsoft vía edge-tts; gratis, sin clave, necesita internet.
+#   piper      voz local; gratis y sin internet. La calidad es un poco menor.
+# microsoft y piper se instalan con scripts/instalar_voces.sh (en .venv-voces/ y voces/).
 # Cada fragmento se genera una vez y queda en cache/voz/<materia>/; volver a escucharlo no cuesta.
 # Un "lote" genera en segundo plano todos los fragmentos de una clase, de a varios a la vez.
 
-VOCES = ["Kore", "Charon", "Aoede", "Puck", "Leda", "Zephyr", "Orus", "Fenrir"]
+VENV_VOCES = ROOT / ".venv-voces"
+VOCES_DIR = ROOT / "voces"
+VOCES_GEMINI = ["Kore", "Charon", "Aoede", "Puck", "Leda", "Zephyr", "Orus", "Fenrir"]
+VOCES_MS = {"es-AR-ElenaNeural": "Elena (Argentina)", "es-AR-TomasNeural": "Tomás (Argentina)",
+            "es-MX-DaliaNeural": "Dalia (México)", "es-MX-JorgeNeural": "Jorge (México)",
+            "es-ES-ElviraNeural": "Elvira (España)", "es-ES-AlvaroNeural": "Álvaro (España)"}
 TTS_MODELOS_ALTERNATIVOS = ["gemini-2.5-flash-preview-tts", "gemini-3.1-flash-tts-preview"]
 VOZ_LOCK = threading.Lock()
-VOZ_EN_CURSO = {}   # clave -> Event: evita pagar dos veces el mismo fragmento
+VOZ_EN_CURSO = {}   # clave -> Event: evita generar dos veces el mismo fragmento
 LOTES = {}          # id -> {"total", "hechos", "esperando", "error"}
 POOL_VOZ = ThreadPoolExecutor(max_workers=CFG["tts_paralelo"])
 
@@ -408,18 +420,58 @@ class LimiteGemini(Exception):
     pass
 
 
+def herramienta(nombre):
+    """Ejecutable instalado por scripts/instalar_voces.sh, o el que esté en el PATH."""
+    local = VENV_VOCES / "bin" / nombre
+    return str(local) if local.exists() else shutil.which(nombre)
+
+
+def voces_piper():
+    return sorted(f.name[:-5] for f in VOCES_DIR.glob("*.onnx") if (VOCES_DIR / (f.name + ".json")).exists())
+
+
+def motores_voz():
+    """Motores disponibles en esta compu, con sus voces y la voz por defecto."""
+    out = {}
+    if herramienta("edge-tts"):
+        out["microsoft"] = {"nombre": "Voz de Microsoft (gratis)", "voces": [{"id": k, "nombre": v} for k, v in VOCES_MS.items()],
+                            "def": CFG["ms_voz"] if CFG["ms_voz"] in VOCES_MS else "es-AR-ElenaNeural"}
+    pv = voces_piper()
+    if pv and herramienta("piper"):
+        out["piper"] = {"nombre": "Voz local Piper (gratis, sin internet)", "voces": [{"id": v, "nombre": v} for v in pv],
+                        "def": CFG["piper_voz"] if CFG["piper_voz"] in pv else next((v for v in pv if v.startswith("es_AR")), pv[0])}
+    if CFG["gemini_key"]:
+        out["gemini"] = {"nombre": "Voz de Gemini (usa créditos)", "voces": [{"id": v, "nombre": v} for v in VOCES_GEMINI],
+                         "def": CFG["tts_voz"] if CFG["tts_voz"] in VOCES_GEMINI else "Kore"}
+    return out
+
+
 def limpiar_texto(t):
     return re.sub(r"\s+", " ", str(t)).strip()[:3000]
 
 
 def en_cache(slug, clave):
-    for ext in (".m4a", ".wav"):
+    for ext in (".m4a", ".mp3", ".wav"):
         if (CACHE / "voz" / slug / (clave + ext)).exists():
             return f"/cache/voz/{slug}/{clave}{ext}"
     return None
 
 
-def sintetizar(slug, texto, nombre, clave):
+def guardar_wav(slug, clave, wav):
+    """Pasa el wav a m4a si hay ffmpeg (ocupa mucho menos) y lo deja en el cache con su nombre final."""
+    d = wav.parent
+    if shutil.which("ffmpeg"):
+        tmp = d / (clave + ".tmp.m4a")
+        if subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(wav), "-c:a", "aac", "-b:a", "64k", str(tmp)],
+                          timeout=120).returncode == 0:
+            wav.unlink()
+            os.replace(tmp, d / (clave + ".m4a"))
+            return f"/cache/voz/{slug}/{clave}.m4a"
+    os.replace(wav, d / (clave + ".wav"))
+    return f"/cache/voz/{slug}/{clave}.wav"
+
+
+def sintetizar_gemini(texto, nombre, wav):
     cuerpo = {"contents": [{"parts": [{"text": f"{CFG['tts_estilo']}\n\n{texto}"}]}],
               "generationConfig": {"responseModalities": ["AUDIO"], "speechConfig": {
                   "voiceConfig": {"prebuiltVoiceConfig": {"voiceName": nombre}}}}}
@@ -436,28 +488,46 @@ def sintetizar(slug, texto, nombre, clave):
                 raise LimiteGemini()
             raise RuntimeError(f"Gemini no pudo generar la voz ({e.code}): {e.read().decode(errors='ignore')[:200]}")
     pcm = base64.b64decode(r["candidates"][0]["content"]["parts"][0]["inlineData"]["data"])
-    d = CACHE / "voz" / slug
-    d.mkdir(parents=True, exist_ok=True)
-    wav = d / (clave + ".tmp.wav")
     with wave.open(str(wav), "wb") as w:  # Gemini devuelve PCM de 16 bits, mono, 24 kHz
         w.setnchannels(1)
         w.setsampwidth(2)
         w.setframerate(24000)
         w.writeframes(pcm)
-    if shutil.which("ffmpeg"):
-        tmp = d / (clave + ".tmp.m4a")
-        if subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(wav), "-c:a", "aac", "-b:a", "64k", str(tmp)],
-                          timeout=120).returncode == 0:
-            wav.unlink()
-            os.replace(tmp, d / (clave + ".m4a"))
-            return f"/cache/voz/{slug}/{clave}.m4a"
-    os.replace(wav, d / (clave + ".wav"))
-    return f"/cache/voz/{slug}/{clave}.wav"
 
 
-def generar_voz(slug, texto, nombre):
+def correr(cmd, quien, **kw):
+    r = subprocess.run(cmd, capture_output=True, timeout=180, **kw)
+    if r.returncode != 0:
+        err = (r.stderr.decode(errors="ignore") if isinstance(r.stderr, bytes) else r.stderr or "").strip().splitlines()
+        raise RuntimeError(f"{quien} no pudo generar la voz: {err[-1][:200] if err else 'error desconocido'}")
+
+
+def sintetizar(slug, texto, motor, nombre, clave):
+    d = CACHE / "voz" / slug
+    d.mkdir(parents=True, exist_ok=True)
+    if motor == "microsoft":
+        txt, mp3 = d / (clave + ".tmp.txt"), d / (clave + ".tmp.mp3")
+        txt.write_text(texto, encoding="utf-8")
+        try:
+            correr([herramienta("edge-tts"), "--voice", nombre, "--file", str(txt), "--write-media", str(mp3)],
+                   "La voz de Microsoft (revisá la conexión a internet)")
+        finally:
+            txt.unlink(missing_ok=True)
+        os.replace(mp3, d / (clave + ".mp3"))
+        return f"/cache/voz/{slug}/{clave}.mp3"
+    wav = d / (clave + ".tmp.wav")
+    if motor == "piper":
+        correr([herramienta("piper"), "-m", str(VOCES_DIR / (nombre + ".onnx")), "-f", str(wav)], "Piper",
+               input=texto.encode("utf-8"))
+    else:
+        sintetizar_gemini(texto, nombre, wav)
+    return guardar_wav(slug, clave, wav)
+
+
+def generar_voz(slug, texto, motor, nombre):
     """URL del audio del fragmento. Si no está en cache lo genera; si otro hilo ya lo está generando, lo espera."""
-    clave = hashlib.sha1("|".join([nombre, CFG["tts_estilo"], texto]).encode()).hexdigest()[:24]
+    partes = [motor, nombre, CFG["tts_estilo"] if motor == "gemini" else "", texto]
+    clave = hashlib.sha1("|".join(partes).encode()).hexdigest()[:24]
     while True:
         url = en_cache(slug, clave)
         if url:
@@ -471,34 +541,46 @@ def generar_voz(slug, texto, nombre):
             ev.wait(300)  # lo está generando otro pedido: esperar y volver a mirar el cache
             continue
         try:
-            return sintetizar(slug, texto, nombre, clave)
+            return sintetizar(slug, texto, motor, nombre, clave)
         finally:
             with VOZ_LOCK:
                 VOZ_EN_CURSO.pop(clave, None)
             ev.set()
 
 
-def voz(slug, texto, nombre=None):
-    if not CFG["gemini_key"]:
-        return 503, {"error": "Para la voz de Gemini falta GEMINI_API_KEY en .env. Mientras tanto usá la voz del sistema."}
+def elegir_motor(motor, nombre):
+    """(motor, voz) válidos, o un error para el usuario."""
+    ms = motores_voz()
+    if motor not in ms:
+        if motor == "gemini":
+            return None, None, "Para la voz de Gemini falta GEMINI_API_KEY en .env."
+        return None, None, "Esa voz no está instalada. Corré scripts/instalar_voces.sh y reiniciá el servidor."
+    ids = [v["id"] for v in ms[motor]["voces"]]
+    return motor, nombre if nombre in ids else ms[motor]["def"], None
+
+
+def voz(slug, texto, nombre=None, motor="gemini"):
+    motor, nombre, err = elegir_motor(motor or "gemini", nombre)
+    if err:
+        return 503, {"error": err}
     texto = limpiar_texto(texto)
     if not texto:
         return 400, {"error": "No hay texto para leer."}
     try:
-        return 200, {"url": generar_voz(slug, texto, nombre if nombre in VOCES else CFG["tts_voz"])}
+        return 200, {"url": generar_voz(slug, texto, motor, nombre)}
     except LimiteGemini:
-        return 429, {"error": "Gemini dice que llegaste al límite de pedidos de voz por ahora. Esperá un rato o usá la voz del sistema."}
-    except RuntimeError as e:
-        return 502, {"error": str(e)}
+        return 429, {"error": "Gemini dice que llegaste al límite de pedidos de voz por ahora. Esperá un rato o elegí una voz gratis."}
+    except (RuntimeError, OSError, subprocess.SubprocessError) as e:
+        return 502, {"error": str(e)[:300]}
 
 
-def lote_voz(slug, textos, nombre=None):
+def lote_voz(slug, textos, nombre=None, motor="gemini"):
     """Genera en segundo plano el audio de todos los fragmentos, en el orden recibido."""
-    if not CFG["gemini_key"]:
-        return 503, {"error": "Falta GEMINI_API_KEY en .env."}
-    nombre = nombre if nombre in VOCES else CFG["tts_voz"]
+    motor, nombre, err = elegir_motor(motor or "gemini", nombre)
+    if err:
+        return 503, {"error": err}
     textos = [t for t in (limpiar_texto(x) for x in (textos or [])[:500]) if t]
-    lid = hashlib.sha1("|".join([slug, nombre] + textos).encode()).hexdigest()[:16]
+    lid = hashlib.sha1("|".join([slug, motor, nombre] + textos).encode()).hexdigest()[:16]
     with VOZ_LOCK:
         L = LOTES.get(lid)
         if L and not L["error"] and not L.get("cancelado"):
@@ -511,7 +593,7 @@ def lote_voz(slug, textos, nombre=None):
             if L.get("cancelado"):
                 return
             try:
-                generar_voz(slug, texto, nombre)
+                generar_voz(slug, texto, motor, nombre)
                 break
             except LimiteGemini:  # límite de pedidos por minuto: esperar y reintentar
                 L["esperando"] = True
@@ -564,16 +646,14 @@ def estado():
         st["modelo_disponible"] = any(t == CFG["modelo"] or t.startswith(CFG["modelo"] + ":") or t.split(":")[0] == CFG["modelo"] for t in tags) or CFG["modelo"] in tags
     except (urllib.error.URLError, OSError, ValueError):
         pass
-    st["voz_gemini"] = bool(CFG["gemini_key"])
-    st["voces"] = VOCES
-    st["voz"] = CFG["tts_voz"]
+    st["voz_motores"] = motores_voz()
     st["corrector"] = (st["proveedor"] == "gemini" and st["gemini"]) or (st["proveedor"] != "gemini" and st["modelo_disponible"])
     return st
 
 # ---------------------------------------------------------------- HTTP
 
 TIPOS = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
-         ".json": "application/json", ".md": "text/markdown; charset=utf-8", ".m4a": "audio/mp4", ".wav": "audio/wav", ".pdf": "application/pdf", ".svg": "image/svg+xml", ".png": "image/png"}
+         ".json": "application/json", ".md": "text/markdown; charset=utf-8", ".m4a": "audio/mp4", ".mp3": "audio/mpeg", ".wav": "audio/wav", ".pdf": "application/pdf", ".svg": "image/svg+xml", ".png": "image/png"}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -613,7 +693,7 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             L = LOTES.get(m.group(1))
             return self.enviar(200, dict(L, id=m.group(1))) if L else self.enviar(404, {"error": "Lote no encontrado"})
-        m = re.match(r"^/cache/voz/([a-z0-9-]+)/([0-9a-f]+\.(?:m4a|wav))$", p)
+        m = re.match(r"^/cache/voz/([a-z0-9-]+)/([0-9a-f]+\.(?:m4a|mp3|wav))$", p)
         if m:
             return self.archivo(CACHE / "voz" / m.group(1) / m.group(2))
         m = re.match(r"^/api/progreso/([a-z0-9-]+)$", p)
@@ -658,14 +738,14 @@ class Handler(BaseHTTPRequestHandler):
                 slug = str(d.get("materia"))
                 if not materia_dir(slug):
                     return self.enviar(404, {"error": "Materia no encontrada"})
-                code, out = lote_voz(slug, list(d.get("textos") or []), d.get("voz"))
+                code, out = lote_voz(slug, list(d.get("textos") or []), d.get("voz"), d.get("motor"))
                 return self.enviar(code, out)
             if p == "/api/voz":
                 d = json.loads(cuerpo or b"{}")
                 slug = str(d.get("materia"))
                 if not materia_dir(slug):
                     return self.enviar(404, {"error": "Materia no encontrada"})
-                code, out = voz(slug, d.get("texto", ""), d.get("voz"))
+                code, out = voz(slug, d.get("texto", ""), d.get("voz"), d.get("motor"))
                 return self.enviar(code, out)
             if p == "/api/explicar":
                 d = json.loads(cuerpo or b"{}")

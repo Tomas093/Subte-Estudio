@@ -32,16 +32,22 @@ Cuando tildás los cuatro pasos, la estación se pinta en el mapa.
 2. Arranca desde el primer párrafo que tenés en pantalla y resalta en amarillo lo que está leyendo. La página baja sola; si scrolleás vos, te deja tranquilo unos segundos.
 3. **Tocá cualquier párrafo** para que lea desde ahí. Con los botones ◀◀ y ▶▶ vas al párrafo anterior o al siguiente.
 4. **Velocidad**: de 0,8× a 1,5×.
-5. **Voz**:
-   - **Voz de Gemini** (la más humana; aparece si tenés `GEMINI_API_KEY`). Podés probar distintas voces en el segundo menú: Kore, Charon, Aoede, Puck y otras.
-     - Apenas tocás "Escuchar", se prepara el audio de **toda la clase** en segundo plano, empezando por donde estás. La barra muestra "Preparando el audio de la clase: 12 de 40" y después "Audio de la clase listo". Solo el primer párrafo tarda unos segundos.
-     - **Preparar el audio de todas las clases** deja todo listo de una vez, por ejemplo antes de salir. Sigue aunque cierres el lector, mientras el servidor esté prendido.
-     - Todo queda guardado en `cache/`: escuchar de nuevo no cuesta nada y arranca al instante. Si cambiás de voz, se regenera con la nueva.
-     - Si Gemini pide esperar (límite de pedidos por minuto), la barra lo dice y sigue sola.
-   - **Voz del sistema** (gratis y sin internet). En la Mac suena mucho mejor si bajás una voz mejorada: Ajustes del Sistema → Accesibilidad → Contenido leído → Voz del sistema → Gestionar voces → Español, y bajá una que diga "Mejorada" o "Premium" (por ejemplo Mónica o Paulina). Después recargá la página y elegila en el menú. Si en Chrome no aparece, probá en Safari.
+5. **Voz** (menú de la barra). Hay cuatro opciones:
+   - **Voz de Microsoft (gratis)**: la recomendada. Suena casi tan natural como Gemini, con acento argentino (Elena o Tomás), y **no gasta créditos ni pide clave**. Necesita internet.
+   - **Voz local Piper (gratis, sin internet)**: voz argentina (Daniela) que se genera en tu compu. Un poco menos natural, pero anda sin conexión.
+   - **Voz de Gemini (usa créditos)**: aparece si tenés `GEMINI_API_KEY`. Voces Kore, Charon, Aoede, Puck y otras.
+   - **Voz del sistema**: la del navegador. Es la menos natural; en la Mac mejora si bajás una voz "Mejorada" o "Premium" en Ajustes del Sistema → Accesibilidad → Contenido leído → Voz del sistema → Gestionar voces.
+
+   **Para tener las voces gratis** (una sola vez): en la Terminal, dentro de la carpeta del proyecto, corré `bash scripts/instalar_voces.sh`. Tarda unos minutos y baja unos 110 MB. Después reiniciá el servidor (Ctrl+C y `python3 server.py`). Queda todo dentro del proyecto; no toca tu Python.
+
+   Con cualquiera de las tres primeras:
+   - Apenas tocás "Escuchar", se prepara el audio de **toda la clase** en segundo plano, empezando por donde estás. La barra muestra "Preparando el audio de la clase: 12 de 40" y después "Audio de la clase listo".
+   - **Preparar el audio de todas las clases** deja todo listo de una vez. Sigue aunque cierres el lector, mientras el servidor esté prendido.
+   - Todo queda guardado en `cache/`: escuchar de nuevo no cuesta nada y arranca al instante. Si cambiás de voz, se regenera con la nueva.
+   - La app recuerda la última voz que elegiste.
 6. **Cerrar** apaga el lector.
 
-Si Gemini dice que llegaste al límite, esperá un rato o tocá "Usar la voz del sistema".
+Si una voz falla (por ejemplo, Microsoft sin internet o Gemini sin créditos), la barra lo dice y te ofrece probar con otra.
 
 ### Si no entendés una parte: Explicame
 
