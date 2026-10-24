@@ -83,6 +83,16 @@ def listar_materias():
     return out
 
 
+def leer_preguntas(q):
+    """Preguntas de una clase. Cada una tiene un "id" fijo: el progreso se guarda por id, no por posición,
+    así sacar o reordenar preguntas no corre las respuestas a otra pregunta."""
+    qs = json.loads(q.read_text(encoding="utf-8")) if q.exists() else []
+    for x in qs:
+        if not x.get("id"):
+            x["id"] = "q" + hashlib.sha1(str(x.get("pregunta", "")).encode("utf-8")).hexdigest()[:8]
+    return qs
+
+
 def cargar_materia(slug):
     d = materia_dir(slug)
     if not d:
@@ -95,20 +105,22 @@ def cargar_materia(slug):
         q = d / "preguntas" / f"clase{nn}.json"
         c["resumen_md"] = r.read_text(encoding="utf-8") if r.exists() else ""
         c["resumen_editado"] = (d / "resumen" / "originales" / f"clase{nn}.md").exists()
-        c["preguntas"] = json.loads(q.read_text(encoding="utf-8")) if q.exists() else []
+        c["preguntas"] = leer_preguntas(q)
     guia = d / "resumen" / "como-responder.md"
     m["como_responder_md"] = guia.read_text(encoding="utf-8") if guia.exists() else ""
     m.pop("reglas_correccion", None)
     return m
 
 
-def pregunta(slug, n, i):
+def pregunta(slug, n, i, qid=None):
     d = materia_dir(slug)
     if not d:
         return None, None
     m = json.loads((d / "materia.json").read_text(encoding="utf-8"))
-    q = d / "preguntas" / f"clase{int(n):02d}.json"
-    qs = json.loads(q.read_text(encoding="utf-8")) if q.exists() else []
+    qs = leer_preguntas(d / "preguntas" / f"clase{int(n):02d}.json")
+    if qid:
+        # El id manda: si la página quedó vieja, la posición puede apuntar a otra pregunta.
+        i = next((k for k, x in enumerate(qs) if x["id"] == qid), -1)
     if not (0 <= i < len(qs)):
         return m, None
     clase = next((c for c in m.get("clases", []) if int(c["n"]) == int(n)), {})
@@ -170,9 +182,14 @@ def leer_progreso(slug):
     return json.loads(f.read_text(encoding="utf-8")) if f.exists() else None
 
 
+VIEJO = re.compile(r"^[a-z]+-h\d+-\d+$")
+
+
 def guardar_progreso(slug, datos):
     if not isinstance(datos, dict):
         raise ValueError("el progreso tiene que ser un objeto")
+    if any(VIEJO.match(k) for k in datos):
+        raise PermissionError("Esta página quedó vieja: recargala para no pisar tu progreso.")
     CFG["datos"].mkdir(parents=True, exist_ok=True)
     f = CFG["datos"] / f"{slug}.json"
     tmp = f.with_suffix(".tmp")
@@ -193,7 +210,7 @@ ESQUEMA = {
     "properties": {
         "claves": {"type": "array", "items": {"type": "object", "properties": {
             "n": {"type": "integer"}, "estado": {"type": "string", "enum": ["presente", "parcial", "ausente"]},
-            "falta": {"type": "string"}}, "required": ["n", "estado", "falta"]}},
+            "dijiste": {"type": "string"}, "falta": {"type": "string"}}, "required": ["n", "estado", "dijiste", "falta"]}},
         "errores": {"type": "array", "items": {"type": "object", "properties": {
             "dijiste": {"type": "string"}, "correcto": {"type": "string"}}, "required": ["dijiste", "correcto"]}},
     },
@@ -234,11 +251,13 @@ CRITERIOS DE EVALUACIÓN:
    - "presente": el alumno comprende la idea central y la expresa correctamente (con sus palabras, ejemplos válidos o lenguaje coloquial).
    - "parcial": la idea está presente pero falta una distinción conceptual importante o quedó a medias.
    - "ausente": no se menciona o está conceptualmente equivocada.
-2. "falta": SOLO para puntos "parcial" o "ausente". Escribí una explicación pedagógica clara, lógica y sin contradicciones (de 10 a 25 palabras):
-   - Explicá qué parte faltó y cómo se formula o completa correctamente.
-   - PROHIBIDO generar contradicciones lógicas (como decir "se sabe timeout pero no que no llegó respuesta"). Si el alumno mencionó el concepto con sinónimos, marcalo "presente".
-   - PROHIBIDO usar palabras sueltas sin verbo ni contexto (como "reintento y respuesta perdida"). Escribí siempre una oración completa que enseñe cómo se dice.
-   - Si está "presente", dejá "" (vacío).
+2. Para cada punto "parcial" o "ausente" completá dos campos. Si está "presente", dejá los dos vacíos ("").
+   - "dijiste": qué escribió el alumno sobre ese punto, citando o parafraseando su respuesta en hasta 20 palabras. Si no lo mencionó, escribí exactamente "No lo mencionaste."
+   - "falta": una oración completa, de 12 a 30 palabras, que diga qué le faltó o qué quedó mal y cómo se dice bien, con un verbo y nombrando la parte de la respuesta a la que se refiere (por ejemplo, la F de la línea D). Tiene que entenderse sin ver el punto clave.
+     Mal: "reintento del cliente y respuesta perdida".
+     Bien: "En la F nombraste solo la caída del servidor; faltó incluir que el cliente reintenta y que la respuesta del servidor se puede perder."
+   - El alumno no ve los puntos clave numerados: nunca digas "punto 1" ni inventes rótulos como "en la A". Nombrá la idea con palabras ("en la ejecución donde se pierde la respuesta") o una letra de la línea D si el alumno la escribió (P, F, G, S, T).
+   - PROHIBIDO generar contradicciones lógicas. Si el alumno mencionó el concepto con sinónimos, marcalo "presente".
 3. "errores": lista de AFIRMACIONES TÉCNICAMENTE FALSAS hechas por el alumno.
    ATENCIÓN ESTRICTA:
    - Si el alumno no hizo ninguna afirmación técnicamente falsa, devolvé "errores": [].
@@ -265,7 +284,7 @@ ERRORES FRECUENTES QUE INVALIDAN:
 RESPUESTA DEL ALUMNO:
 {respuesta}
 
-Respondé solo con JSON: {{"claves":[{{"n":1,"estado":"presente|parcial|ausente","falta":"..."}}],"errores":[{{"dijiste":"...","correcto":"..."}}]}}"""
+Respondé solo con JSON: {{"claves":[{{"n":1,"estado":"presente|parcial|ausente","dijiste":"...","falta":"..."}}],"errores":[{{"dijiste":"...","correcto":"..."}}]}}"""
 
 
 ESQUEMA_REPASO = {
@@ -353,8 +372,8 @@ def corto(t, n=240):
     return ELOGIO.sub("", str(t or "")).strip()[:n]
 
 
-def corregir(slug, n, i, respuesta, proveedor=None):
-    m, q = pregunta(slug, n, i)
+def corregir(slug, n, i, respuesta, proveedor=None, qid=None):
+    m, q = pregunta(slug, n, i, qid)
     if not q:
         return 404, {"error": "Pregunta no encontrada"}
     proveedor = proveedor or CFG["proveedor"]
@@ -366,8 +385,14 @@ def corregir(slug, n, i, respuesta, proveedor=None):
         c = estados.get(k, {})
         estado = c.get("estado") if c.get("estado") in ("presente", "parcial", "ausente") else "ausente"
         puntos += {"presente": 1, "parcial": 0.5}.get(estado, 0)
-        falta = "" if estado == "presente" else corto(c.get("falta") or c.get("comentario"))
-        detalle.append({"texto": texto, "estado": estado, "falta": falta})
+        dijiste = falta = ""
+        if estado != "presente":
+            dijiste = corto(c.get("dijiste"), 200) or ("No lo mencionaste." if estado == "ausente" else "")
+            falta = corto(c.get("falta") or c.get("comentario"), 300)
+            # Si el modelo devuelve un fragmento sin verbo, se usa el punto clave, que es una oración completa.
+            if len(falta.split()) < 8:
+                falta = ("Faltó explicar completo esto: " if estado == "parcial" else "Faltó decir esto: ") + texto
+        detalle.append({"texto": texto, "estado": estado, "dijiste": dijiste, "falta": falta})
     errores = []
     for e in data.get("errores", []):
         if isinstance(e, dict) and str(e.get("dijiste", "")).strip():
@@ -451,12 +476,12 @@ def repaso(slug, n, items, proveedor=None):
         return 404, {"error": "Materia no encontrada"}
     m = json.loads((d / "materia.json").read_text(encoding="utf-8"))
     clase = next((c for c in m.get("clases", []) if int(c["n"]) == int(n)), {"n": n})
-    q = d / "preguntas" / f"clase{int(n):02d}.json"
-    qs = json.loads(q.read_text(encoding="utf-8")) if q.exists() else []
+    qs = leer_preguntas(d / "preguntas" / f"clase{int(n):02d}.json")
+    pos = {x["id"]: k for k, x in enumerate(qs)}
     RES = {0: "mal o no la sabía", 1: "a medias", 2: "bien"}
     datos, ver = [], {}
     for it in items[:40]:
-        i = int(it.get("i", -1))
+        i = pos.get(it.get("id"), -1) if it.get("id") else int(it.get("i", -1))
         if not (0 <= i < len(qs)) or it.get("veredicto") not in (0, 1, 2) or (i + 1) in ver:
             continue
         v = it["veredicto"]
@@ -828,12 +853,15 @@ class Handler(BaseHTTPRequestHandler):
                 resp = str(d.get("respuesta", "")).strip()
                 if len(resp.split()) < 8:
                     return self.enviar(400, {"error": "Escribí una respuesta un poco más completa antes de corregirla."})
-                code, out = corregir(str(d.get("materia")), int(d.get("clase")), int(d.get("i")), resp[:6000], d.get("proveedor"))
+                code, out = corregir(str(d.get("materia")), int(d.get("clase")), int(d.get("i", -1)), resp[:6000],
+                                     d.get("proveedor"), d.get("id"))
                 return self.enviar(code, out)
             m = re.match(r"^/api/progreso/([a-z0-9-]+)$", p)
             if m and materia_dir(m.group(1)):
                 try:
                     guardar_progreso(m.group(1), json.loads(cuerpo or b"{}"))
+                except PermissionError as e:
+                    return self.enviar(409, {"error": str(e)})
                 except OSError as e:
                     return self.enviar(500, {"error": f"No se pudo guardar el progreso ({e})"})
                 return self.enviar(200, {"ok": True})
