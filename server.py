@@ -16,8 +16,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import wave
+from concurrent.futures import ThreadPoolExecutor
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -50,6 +52,7 @@ CFG = {
     "gemini_modelo": os.environ.get("GEMINI_MODELO", "gemini-2.5-flash"),
     "tts_modelo": os.environ.get("GEMINI_TTS_MODELO", "gemini-2.5-flash-preview-tts"),
     "tts_voz": os.environ.get("GEMINI_VOZ", "Kore"),
+    "tts_paralelo": max(1, int(os.environ.get("GEMINI_VOZ_PARALELO", "3"))),
     "tts_estilo": os.environ.get("GEMINI_VOZ_ESTILO", "Leé en voz alta el siguiente texto en español, con acento rioplatense, voz clara y ritmo tranquilo, como un profesor que le explica a un alumno. No agregues nada."),
     "whisper_bin": os.environ.get("WHISPER_BIN", "whisper-cli"),
     "whisper_modelo": os.path.expanduser(os.environ.get("WHISPER_MODELO", "")),
@@ -391,23 +394,32 @@ def repaso(slug, n, items, proveedor=None):
 
 # ---------------------------------------------------------------- lectura en voz alta (Gemini TTS)
 # Cada fragmento se genera una vez y queda en cache/voz/<materia>/; volver a escucharlo no cuesta.
+# Un "lote" genera en segundo plano todos los fragmentos de una clase, de a varios a la vez.
 
 VOCES = ["Kore", "Charon", "Aoede", "Puck", "Leda", "Zephyr", "Orus", "Fenrir"]
 TTS_MODELOS_ALTERNATIVOS = ["gemini-2.5-flash-preview-tts", "gemini-3.1-flash-tts-preview"]
+VOZ_LOCK = threading.Lock()
+VOZ_EN_CURSO = {}   # clave -> Event: evita pagar dos veces el mismo fragmento
+LOTES = {}          # id -> {"total", "hechos", "esperando", "error"}
+POOL_VOZ = ThreadPoolExecutor(max_workers=CFG["tts_paralelo"])
 
 
-def voz(slug, texto, nombre=None):
-    if not CFG["gemini_key"]:
-        return 503, {"error": "Para la voz de Gemini falta GEMINI_API_KEY en .env. Mientras tanto usá la voz del sistema."}
-    texto = re.sub(r"\s+", " ", str(texto)).strip()[:3000]
-    if not texto:
-        return 400, {"error": "No hay texto para leer."}
-    nombre = nombre if nombre in VOCES else CFG["tts_voz"]
-    clave = hashlib.sha1("|".join([nombre, CFG["tts_estilo"], texto]).encode()).hexdigest()[:24]
-    d = CACHE / "voz" / slug
+class LimiteGemini(Exception):
+    pass
+
+
+def limpiar_texto(t):
+    return re.sub(r"\s+", " ", str(t)).strip()[:3000]
+
+
+def en_cache(slug, clave):
     for ext in (".m4a", ".wav"):
-        if (d / (clave + ext)).exists():
-            return 200, {"url": f"/cache/voz/{slug}/{clave}{ext}"}
+        if (CACHE / "voz" / slug / (clave + ext)).exists():
+            return f"/cache/voz/{slug}/{clave}{ext}"
+    return None
+
+
+def sintetizar(slug, texto, nombre, clave):
     cuerpo = {"contents": [{"parts": [{"text": f"{CFG['tts_estilo']}\n\n{texto}"}]}],
               "generationConfig": {"responseModalities": ["AUDIO"], "speechConfig": {
                   "voiceConfig": {"prebuiltVoiceConfig": {"voiceName": nombre}}}}}
@@ -421,24 +433,100 @@ def voz(slug, texto, nombre=None):
             if e.code == 404 and k + 1 < len(modelos):
                 continue  # el modelo de vista previa cambió de nombre: probar el siguiente
             if e.code == 429:
-                return 429, {"error": "Gemini dice que llegaste al límite de pedidos de voz por ahora. Esperá un rato o usá la voz del sistema."}
-            return 502, {"error": f"Gemini no pudo generar la voz ({e.code}): {e.read().decode(errors='ignore')[:200]}"}
+                raise LimiteGemini()
+            raise RuntimeError(f"Gemini no pudo generar la voz ({e.code}): {e.read().decode(errors='ignore')[:200]}")
     pcm = base64.b64decode(r["candidates"][0]["content"]["parts"][0]["inlineData"]["data"])
+    d = CACHE / "voz" / slug
     d.mkdir(parents=True, exist_ok=True)
-    wav = d / (clave + ".wav")
+    wav = d / (clave + ".tmp.wav")
     with wave.open(str(wav), "wb") as w:  # Gemini devuelve PCM de 16 bits, mono, 24 kHz
         w.setnchannels(1)
         w.setsampwidth(2)
         w.setframerate(24000)
         w.writeframes(pcm)
     if shutil.which("ffmpeg"):
-        m4a = d / (clave + ".m4a")
-        ok = subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(wav), "-c:a", "aac", "-b:a", "64k", str(m4a)],
-                            timeout=120).returncode == 0
-        if ok:
+        tmp = d / (clave + ".tmp.m4a")
+        if subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(wav), "-c:a", "aac", "-b:a", "64k", str(tmp)],
+                          timeout=120).returncode == 0:
             wav.unlink()
-            return 200, {"url": f"/cache/voz/{slug}/{clave}.m4a"}
-    return 200, {"url": f"/cache/voz/{slug}/{clave}.wav"}
+            os.replace(tmp, d / (clave + ".m4a"))
+            return f"/cache/voz/{slug}/{clave}.m4a"
+    os.replace(wav, d / (clave + ".wav"))
+    return f"/cache/voz/{slug}/{clave}.wav"
+
+
+def generar_voz(slug, texto, nombre):
+    """URL del audio del fragmento. Si no está en cache lo genera; si otro hilo ya lo está generando, lo espera."""
+    clave = hashlib.sha1("|".join([nombre, CFG["tts_estilo"], texto]).encode()).hexdigest()[:24]
+    while True:
+        url = en_cache(slug, clave)
+        if url:
+            return url
+        with VOZ_LOCK:
+            ev = VOZ_EN_CURSO.get(clave)
+            mio = ev is None
+            if mio:
+                ev = VOZ_EN_CURSO[clave] = threading.Event()
+        if not mio:
+            ev.wait(300)  # lo está generando otro pedido: esperar y volver a mirar el cache
+            continue
+        try:
+            return sintetizar(slug, texto, nombre, clave)
+        finally:
+            with VOZ_LOCK:
+                VOZ_EN_CURSO.pop(clave, None)
+            ev.set()
+
+
+def voz(slug, texto, nombre=None):
+    if not CFG["gemini_key"]:
+        return 503, {"error": "Para la voz de Gemini falta GEMINI_API_KEY en .env. Mientras tanto usá la voz del sistema."}
+    texto = limpiar_texto(texto)
+    if not texto:
+        return 400, {"error": "No hay texto para leer."}
+    try:
+        return 200, {"url": generar_voz(slug, texto, nombre if nombre in VOCES else CFG["tts_voz"])}
+    except LimiteGemini:
+        return 429, {"error": "Gemini dice que llegaste al límite de pedidos de voz por ahora. Esperá un rato o usá la voz del sistema."}
+    except RuntimeError as e:
+        return 502, {"error": str(e)}
+
+
+def lote_voz(slug, textos, nombre=None):
+    """Genera en segundo plano el audio de todos los fragmentos, en el orden recibido."""
+    if not CFG["gemini_key"]:
+        return 503, {"error": "Falta GEMINI_API_KEY en .env."}
+    nombre = nombre if nombre in VOCES else CFG["tts_voz"]
+    textos = [t for t in (limpiar_texto(x) for x in (textos or [])[:500]) if t]
+    lid = hashlib.sha1("|".join([slug, nombre] + textos).encode()).hexdigest()[:16]
+    with VOZ_LOCK:
+        L = LOTES.get(lid)
+        if L and not L["error"] and not L.get("cancelado"):
+            return 200, dict(L, id=lid)
+        L = LOTES[lid] = {"total": len(textos), "hechos": 0, "esperando": False, "error": ""}
+
+    def uno(texto):
+        espera = 15
+        while True:
+            if L.get("cancelado"):
+                return
+            try:
+                generar_voz(slug, texto, nombre)
+                break
+            except LimiteGemini:  # límite de pedidos por minuto: esperar y reintentar
+                L["esperando"] = True
+                time.sleep(espera)
+                espera = min(espera * 2, 120)
+            except Exception as e:  # noqa: BLE001 (se informa en el estado del lote)
+                L["error"] = str(e)[:300] or "No se pudo generar la voz."
+                return
+        with VOZ_LOCK:
+            L["hechos"] += 1
+            L["esperando"] = False
+
+    for t in textos:
+        POOL_VOZ.submit(uno, t)
+    return 200, dict(L, id=lid)
 
 # ---------------------------------------------------------------- transcripción
 
@@ -521,6 +609,10 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             data = cargar_materia(m.group(1))
             return self.enviar(200, data) if data else self.enviar(404, {"error": "Materia no encontrada"})
+        m = re.match(r"^/api/voz/lote/([0-9a-f]{16})$", p)
+        if m:
+            L = LOTES.get(m.group(1))
+            return self.enviar(200, dict(L, id=m.group(1))) if L else self.enviar(404, {"error": "Lote no encontrado"})
         m = re.match(r"^/cache/voz/([a-z0-9-]+)/([0-9a-f]+\.(?:m4a|wav))$", p)
         if m:
             return self.archivo(CACHE / "voz" / m.group(1) / m.group(2))
@@ -556,6 +648,18 @@ class Handler(BaseHTTPRequestHandler):
                 except OSError as e:
                     return self.enviar(500, {"error": f"No se pudo guardar el progreso ({e})"})
                 return self.enviar(200, {"ok": True})
+            m = re.match(r"^/api/voz/lote/([0-9a-f]{16})/cancelar$", p)
+            if m:
+                if m.group(1) in LOTES:
+                    LOTES[m.group(1)]["cancelado"] = True
+                return self.enviar(200, {"ok": True})
+            if p == "/api/voz/lote":
+                d = json.loads(cuerpo or b"{}")
+                slug = str(d.get("materia"))
+                if not materia_dir(slug):
+                    return self.enviar(404, {"error": "Materia no encontrada"})
+                code, out = lote_voz(slug, list(d.get("textos") or []), d.get("voz"))
+                return self.enviar(code, out)
             if p == "/api/voz":
                 d = json.loads(cuerpo or b"{}")
                 slug = str(d.get("materia"))

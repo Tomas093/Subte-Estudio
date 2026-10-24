@@ -33,7 +33,11 @@ Cuando tildás los cuatro pasos, la estación se pinta en el mapa.
 3. **Tocá cualquier párrafo** para que lea desde ahí. Con los botones ◀◀ y ▶▶ vas al párrafo anterior o al siguiente.
 4. **Velocidad**: de 0,8× a 1,5×.
 5. **Voz**:
-   - **Voz de Gemini** (la más humana; aparece si tenés `GEMINI_API_KEY`). Podés probar distintas voces en el segundo menú: Kore, Charon, Aoede, Puck y otras. Cada párrafo se genera una sola vez y queda guardado en `cache/`: la segunda vez que lo escuchás no cuesta nada y arranca al instante. La primera vez tarda unos segundos en arrancar.
+   - **Voz de Gemini** (la más humana; aparece si tenés `GEMINI_API_KEY`). Podés probar distintas voces en el segundo menú: Kore, Charon, Aoede, Puck y otras.
+     - Apenas tocás "Escuchar", se prepara el audio de **toda la clase** en segundo plano, empezando por donde estás. La barra muestra "Preparando el audio de la clase: 12 de 40" y después "Audio de la clase listo". Solo el primer párrafo tarda unos segundos.
+     - **Preparar el audio de todas las clases** deja todo listo de una vez, por ejemplo antes de salir. Sigue aunque cierres el lector, mientras el servidor esté prendido.
+     - Todo queda guardado en `cache/`: escuchar de nuevo no cuesta nada y arranca al instante. Si cambiás de voz, se regenera con la nueva.
+     - Si Gemini pide esperar (límite de pedidos por minuto), la barra lo dice y sigue sola.
    - **Voz del sistema** (gratis y sin internet). En la Mac suena mucho mejor si bajás una voz mejorada: Ajustes del Sistema → Accesibilidad → Contenido leído → Voz del sistema → Gestionar voces → Español, y bajá una que diga "Mejorada" o "Premium" (por ejemplo Mónica o Paulina). Después recargá la página y elegila en el menú. Si en Chrome no aparece, probá en Safari.
 6. **Cerrar** apaga el lector.
 

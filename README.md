@@ -15,7 +15,7 @@ El contenido de cada materia (resúmenes, preguntas, plan) lo arman agentes de C
 - **Corrección:** el corrector marca cada punto clave como presente, parcial o ausente y te devuelve, en frases cortas y sin elogios, qué te faltó y qué dijiste mal y cómo es en realidad. Por defecto usa [Ollama](https://ollama.com) con un modelo local; también puede usar Gemini.
 - **Dónde se explica:** cada pregunta enlaza a la sección del resumen que la responde.
 - **Resumen de tus errores:** al calificar todas las preguntas de una clase, el corrector arma qué tenés que reforzar (qué fallaste, cómo es lo correcto y un ejercicio para fijarlo) y qué secciones releer.
-- **Escuchar el resumen:** lo lee en voz alta y resalta el párrafo que va leyendo, con velocidad ajustable. Usa la voz de Gemini (la más natural; cada párrafo se genera una vez y queda en `cache/`) o la voz del sistema, gratis y sin internet.
+- **Escuchar el resumen:** lo lee en voz alta y resalta el párrafo que va leyendo, con velocidad ajustable. Usa la voz de Gemini (la más natural; al empezar prepara en segundo plano el audio de toda la clase, o de todas, y lo guarda en `cache/`) o la voz del sistema, gratis y sin internet.
 - **Explicame:** seleccionás una parte del resumen y el modelo te la explica simple, con un ejemplo, usando el resumen de la clase como fuente; podés seguir preguntando y guardar la idea en tus apuntes.
 - **Mis apuntes:** al lado de cada resumen, un espacio por clase para escribir lo esencial; seleccionando texto del resumen se agrega con un toque. La pestaña "Mis apuntes" los junta todos y los descarga en Markdown.
 - **Dictado:** grabás tu respuesta con el micrófono y [whisper.cpp](https://github.com/ggml-org/whisper.cpp) la transcribe en tu compu.
@@ -51,7 +51,7 @@ Abrí `http://127.0.0.1:8765`. Si tenés varias materias, elegís cuál en el se
 | `SUBTE_PROVEEDOR` | `ollama` (local) o `gemini` |
 | `SUBTE_MODELO` | Modelo de Ollama, por defecto `qwen3:30b` |
 | `GEMINI_API_KEY`, `GEMINI_MODELO` | Solo si usás Gemini; se cobra por uso según la tarifa de Google |
-| `GEMINI_VOZ`, `GEMINI_TTS_MODELO`, `GEMINI_VOZ_ESTILO` | Voz que lee los resúmenes, modelo de voz e instrucción de tono |
+| `GEMINI_VOZ`, `GEMINI_TTS_MODELO`, `GEMINI_VOZ_ESTILO`, `GEMINI_VOZ_PARALELO` | Voz que lee los resúmenes, modelo de voz, instrucción de tono y cuántos párrafos genera a la vez |
 | `WHISPER_MODELO` | Ruta al modelo ggml de whisper.cpp |
 | `WHISPER_IDIOMA` | Idioma del dictado, por defecto `es` |
 | `SUBTE_DATOS` | Carpeta del progreso, por defecto `progreso/`. Poné una de iCloud o Dropbox para usarlo en varias compus |

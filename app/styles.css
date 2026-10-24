@@ -279,6 +279,10 @@ button.donde{background:none;border:0;padding:0;margin-top:8px;color:var(--la-in
 .lector select{font:600 .86rem var(--sign-font);padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);max-width:15em}
 .lector .l-pos{color:var(--muted);font-variant-numeric:tabular-nums}
 .lector .l-estado{flex-basis:100%;color:var(--muted);font-weight:500}
+.lector .l-audio{color:var(--muted);font-weight:600;font-variant-numeric:tabular-nums}
+.lector .l-audio.ok{color:var(--ok)}
+.lector .l-audio:empty{display:none}
+.lector .lk{background:none;border:0;padding:0;color:var(--la-ink);text-decoration:underline;text-underline-offset:3px;cursor:pointer;font:600 .84rem var(--sign-font)}
 .lector .l-estado:empty{display:none}
 .lector .l-estado .lk{background:none;border:0;padding:0;color:var(--la-ink);text-decoration:underline;cursor:pointer;font:inherit}
 .lector .l-tip{color:var(--muted);font-weight:500;font-size:.8rem}
