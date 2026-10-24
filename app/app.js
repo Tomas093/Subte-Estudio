@@ -251,6 +251,19 @@
   }
 
   /* ---------- resumen de la autoevaluación ---------- */
+  const pn = a => a.length === 1 ? "la pregunta " + a[0] : "las preguntas " + a.slice(0, -1).join(", ") + " y " + a[a.length - 1];
+  // Temas por concepto (todas las preguntas juntas). Acepta el formato viejo ("reforzar", sin conteos).
+  function temasHtml(d) {
+    const temas = d.temas || (d.reforzar || []).map(x => ({ ...x, mal: [], bien: [], estado: "flojo" }));
+    const EST = { flojo: ["No lo sabés", "t0"], inestable: ["Lo sabés a medias", "t1"] };
+    let h = `<ol>${temas.map(x => {
+      const [et, cls] = EST[x.estado] || EST.flojo;
+      const ev = x.mal.length ? `<span class="ev">Mal en ${pn(x.mal)}${x.bien.length ? ` · bien en ${pn(x.bien)}` : ""}</span>` : "";
+      return `<li><b>${esc(x.tema)}</b> <span class="tag ${cls}">${et}</span>${ev}<span class="lab">Qué fallás</span><p>${esc(x.que_fallo)}</p><span class="lab">Cómo es</span><p>${esc(x.como_es)}</p><span class="lab">Para fijarlo</span><p>${esc(x.practica)}</p></li>`;
+    }).join("")}</ol>`;
+    if ((d.firmes || []).length) h += `<p class="firmes"><span class="lab">Lo que ya manejás</span>${d.firmes.map(x => `${esc(x.tema)} <span class="ev">(${x.preguntas.join(", ")})</span>`).join(" · ")}</p>`;
+    return h;
+  }
   const ARMANDO = new Set();
   function rated(c) { return (c.preguntas || []).map((q, i) => ({ q, i, k: "h" + c.n + "-" + i, v: S["r-h" + c.n + "-" + i] })).filter(x => x.v === 0 || x.v === 1 || x.v === 2); }
   const firma = w => JSON.stringify(w.map(x => [x.i, x.v, (S["g-" + x.k] || {}).puntaje]));
@@ -258,13 +271,13 @@
     const box = $("fin-" + c.n); if (!box) return;
     const total = (c.preguntas || []).length, r = rated(c), weak = r.filter(x => x.v < 2), done = r.length === total;
     if (!r.length) { box.innerHTML = ""; return; }
-    const cnt = v => r.filter(x => x.v === v).length, F = S["fin-" + c.n], fr = firma(weak);
+    const cnt = v => r.filter(x => x.v === v).length, F = S["fin-" + c.n], fr = firma(r);
     let h = `<h3 class="sec">Resumen de tu autoevaluación</h3><p class="fin-cnt">Respondiste ${r.length} de ${total}: <b class="t2">${cnt(2)} bien</b> · <b class="t1">${cnt(1)} a medias</b> · <b class="t0">${cnt(0)} mal o no la sabías</b>.</p>`;
     if (!done) h += `<p class="fin-note">Cuando califiques las ${total} preguntas se arma solo el resumen de tus errores. Una pregunta cuenta cuando la corregís, la calificás con "¿Cómo te fue?" o marcás "No la sé".</p>`;
     if (!weak.length) { box.innerHTML = h + (done ? `<p>No tenés preguntas mal ni a medias en esta clase.</p>` : ""); return; }
     // Resumen personalizado (lo arma el modelo)
     if (F && F.data) {
-      h += `<div class="perso"><h4>Qué tenés que reforzar</h4>${F.data.diagnostico ? `<p class="diag">${esc(F.data.diagnostico)}</p>` : ""}<ol>${(F.data.reforzar || []).map(x => `<li><b>${esc(x.tema)}</b><span class="lab">Qué fallaste</span><p>${esc(x.que_fallo)}</p><span class="lab">Cómo es</span><p>${esc(x.como_es)}</p><span class="lab">Para fijarlo</span><p>${esc(x.practica)}</p></li>`).join("")}</ol>`;
+      h += `<div class="perso"><h4>Qué tenés que reforzar, mirando todas las preguntas</h4>${F.data.diagnostico ? `<p class="diag">${esc(F.data.diagnostico)}</p>` : ""}${temasHtml(F.data)}`;
       if (F.firma !== fr) h += `<p class="fin-note">Tus respuestas cambiaron desde que se armó este resumen.</p>`;
       h += ST.corrector ? `<button class="btn" data-fin="${c.n}">${F.firma !== fr ? "Rehacer con las respuestas nuevas" : "Rehacer el resumen"}</button>` : "";
       h += `</div>`;
@@ -274,23 +287,24 @@
     // Lo que sale directo de las correcciones, sin modelo
     const secs = [...new Set(weak.map(x => x.q.donde).filter(Boolean))];
     if (secs.length) h += `<h4>Releé estas secciones del resumen</h4><ul class="releer">${secs.map(t => `<li><button class="donde" data-donde="${esc(t)}" data-donde-c="${c.n}">${esc(t)}</button></li>`).join("")}</ul>`;
-    h += `<h4>Pregunta por pregunta</h4><ul class="weak fin-q">${weak.map(x => {
+    h += `<details class="fin-det"><summary>Pregunta por pregunta (${weak.length})</summary><ul class="weak fin-q">${weak.map(x => {
       const g = S["g-" + x.k];
       const det = g ? fallas(g) : `<span class="lab">Sin corrección. Lo que tenía que decir la respuesta</span><ul class="plain">${(x.q.claves || []).map(y => `<li>${esc(y)}</li>`).join("")}</ul>`;
       return `<li><span class="q-n">${x.i + 1}</span><div><span class="tag t${x.v}">${x.v === 1 ? "A medias" : g ? "Mal" : "No la sabías"}</span><b>${esc(x.q.pregunta)}</b><div class="det">${det}</div><div class="acts"><button data-goq="${x.k}">Responder de nuevo</button>${dondeLink(x.q, c.n)}</div></div></li>`;
-    }).join("")}</ul>`;
+    }).join("")}</ul></details>`;
     box.innerHTML = h;
-    if (done && ST.corrector && !F && !ARMANDO.has(c.n)) armarFin(c);
+    // Sin resumen, o con el formato viejo (pregunta por pregunta, sin temas): se arma solo.
+    if (done && ST.corrector && (!F || (F.data && !F.data.temas)) && !ARMANDO.has(c.n)) armarFin(c);
   }
   async function armarFin(c) {
     if (ARMANDO.has(c.n)) return;
-    const weak = rated(c).filter(x => x.v < 2);
-    const items = weak.map(x => { const g = S["g-" + x.k]; return { i: x.i, veredicto: x.v, faltas: g ? (g.claves || []).filter(y => y.estado !== "presente").map(faltaTxt) : [], errores: g ? errList(g).map(y => y.dijiste + (y.correcto ? " (lo correcto: " + y.correcto + ")" : "")) : [] }; });
+    const todas = rated(c);
+    const items = todas.map(x => { const g = S["g-" + x.k]; return { i: x.i, veredicto: x.v, cubiertas: g ? (g.claves || []).filter(y => y.estado === "presente").map(y => y.texto) : [], faltas: g ? (g.claves || []).filter(y => y.estado !== "presente").map(faltaTxt) : [], errores: g ? errList(g).map(y => y.dijiste + (y.correcto ? " (lo correcto: " + y.correcto + ")" : "")) : [] }; });
     ARMANDO.add(c.n); finRender(c);
     try {
       const r = await fetch("/api/repaso", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ materia: M.slug, clase: c.n, items }) });
       const d = await r.json(); if (!r.ok) throw new Error(d.error || "No se pudo armar el resumen.");
-      S["fin-" + c.n] = { firma: firma(weak), data: d };
+      S["fin-" + c.n] = { firma: firma(todas), data: d };
     } catch (e) { S["fin-" + c.n] = { error: e.message }; }
     finally { ARMANDO.delete(c.n); save(); finRender(c); }
   }
@@ -340,7 +354,7 @@
       let fijo = "", tent = "";
       for (let i = 0; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) fijo += t; else tent += t; }
       R.fijo = (previo + " " + fijo).trim(); R.tent = tent.trim();
-      vivo(R, "Escuchando… hablá y se va escribiendo en la caja.");
+      vivo(R, "");
     };
     sr.onend = () => { if (rec === R && R.sr === sr) { previo = R.fijo; try { sr.start(); } catch (e) { } } };
     sr.onerror = e => { if (e.error === "not-allowed" || e.error === "service-not-allowed" || e.error === "network") { R.sr = null; if (ST.transcripcion) parciales(R); } };
@@ -352,7 +366,7 @@
     R.tic = setInterval(async () => {
       if (rec !== R || R.ocupado || !R.chunks.length) return;
       R.ocupado = true;
-      try { const t = await whisper(new Blob(R.chunks, { type: R.mr.mimeType || "audio/webm" })); if (rec === R) { R.fijo = t; vivo(R, "Escuchando… se actualiza cada unos segundos."); } }
+      try { const t = await whisper(new Blob(R.chunks, { type: R.mr.mimeType || "audio/webm" })); if (rec === R) { R.fijo = t; vivo(R, ""); } }
       catch (e) { } finally { R.ocupado = false; }
     }, 2500);
   }
@@ -364,7 +378,7 @@
     catch (e) { $("out-" + k).innerHTML = `<p class="thinking">No pude usar el micrófono. Revisá el permiso del navegador.</p>`; return; }
     const ta = $("ta-" + k), R = { k, mr: new MediaRecorder(stream), chunks: [], fijo: "", tent: "", sr: null, base: ta.value.trim() };
     const mr = R.mr;
-    rec = R; micEstado(btn, "grabando"); ta.readOnly = true; ta.classList.add("dictando"); vivo(R, "Escuchando… hablá y se va escribiendo en la caja.");
+    rec = R; micEstado(btn, "grabando"); ta.readOnly = true; ta.classList.add("dictando"); vivo(R, "");
     mr.ondataavailable = e => e.data.size && R.chunks.push(e.data);
     mr.onstop = async () => {
       stream.getTracks().forEach(t => t.stop()); rec = null; clearInterval(R.tic);
@@ -417,7 +431,7 @@
       (ya.length ? `<ul class="weak">${ya.map(x => item(x, true)).join("")}</ul>` : `<p class="empty">No tenés repasos pendientes ahora.${luego.length ? ` El próximo es ${cuando(luego[0].sr.vence - now)}.` : ""}</p>`) +
       (luego.length ? `<h3 class="sec">Próximos repasos · ${luego.length}</h3><ul class="weak">${luego.map(x => item(x, false)).join("")}</ul>` : "") +
       (aprendidas ? `<p class="lead">Preguntas aprendidas: ${aprendidas}.</p>` : "") +
-      (fins.length ? `<h3 class="sec">Resúmenes de tus errores</h3><ul class="weak">${fins.map(c => { const d = S["fin-" + c.n].data; return `<li>${roundel(c)}<div><span class="tag">Clase ${c.n} · ${esc(c.titulo)}</span><b>${esc(d.diagnostico)}</b><p class="temas">Reforzar: ${esc((d.reforzar || []).map(x => x.tema).join(" · "))}</p><div class="acts"><button data-gofin="${c.n}">Leer el resumen completo</button></div></div></li>`; }).join("")}</ul>` : "");
+      (fins.length ? `<h3 class="sec">Resúmenes de tus errores</h3><ul class="weak">${fins.map(c => { const d = S["fin-" + c.n].data; return `<li>${roundel(c)}<div><span class="tag">Clase ${c.n} · ${esc(c.titulo)}</span><b>${esc(d.diagnostico)}</b><p class="temas">Reforzar: ${esc((d.temas || d.reforzar || []).map(x => x.tema).join(" · "))}</p><div class="acts"><button data-gofin="${c.n}">Leer el resumen completo</button></div></div></li>`; }).join("")}</ul>` : "");
   }
 
   /* ---------- editar el resumen ----------
