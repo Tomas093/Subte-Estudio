@@ -305,6 +305,62 @@ def corregir(slug, n, i, respuesta, proveedor=None):
                  "modelo": CFG["gemini_modelo"] if proveedor == "gemini" else CFG["modelo"]}
 
 
+ESQUEMA_EXPLICAR = {
+    "type": "object",
+    "properties": {
+        "en_una_frase": {"type": "string"},
+        "explicacion": {"type": "string"},
+        "ejemplo": {"type": "string"},
+    },
+    "required": ["en_una_frase", "explicacion", "ejemplo"],
+}
+
+
+def prompt_explicar(m, clase, resumen, texto, pregunta, historial):
+    previo = "\n\n".join(f"PREGUNTA ANTERIOR: {h.get('p', '')}\nTU RESPUESTA: {h.get('r', '')}" for h in historial)
+    pedido = f"El alumno ahora pregunta: {pregunta}" if pregunta else "El alumno no entendió esta parte. Explicásela."
+    return f"""Sos un profesor particular de {m.get('titulo', '')}. El alumno está leyendo el resumen de la clase {clase.get('n')} ({clase.get('titulo', '')}) y seleccionó un fragmento.
+
+{pedido}
+
+CÓMO RESPONDER:
+- "en_una_frase": la idea central en una oración de 25 palabras como máximo, que se pueda copiar a los apuntes.
+- "explicacion": de 2 a 4 párrafos cortos (150 palabras en total como máximo). Lenguaje simple: cada término técnico, definilo con palabras comunes la primera vez. Explicá el porqué, no solo el qué. Si el fragmento compara cosas, decí explícitamente en qué se diferencian. Separá los párrafos con una línea en blanco.
+- "ejemplo": un caso concreto de 1 a 3 oraciones que lo muestre funcionando. Preferí ejemplos del resumen.
+- Tu fuente es el RESUMEN DE LA CLASE. Si para explicar agregás algo que no está en el resumen, empezá esa oración con "Fuera del resumen:". No contradigas el resumen.
+- Si la pregunta no tiene que ver con la materia, decilo en "en_una_frase" y dejá los otros campos cortos.
+
+{ESTILO}
+
+RESUMEN DE LA CLASE:
+{resumen}
+
+FRAGMENTO SELECCIONADO:
+{texto}
+
+{previo}
+
+Respondé solo con JSON: {{"en_una_frase":"...","explicacion":"...","ejemplo":"..."}}"""
+
+
+def explicar(slug, n, texto, pregunta="", historial=None, proveedor=None):
+    """Explica un fragmento del resumen que el alumno seleccionó, con el resumen de la clase como contexto."""
+    d = materia_dir(slug)
+    if not d:
+        return 404, {"error": "Materia no encontrada"}
+    texto = re.sub(r"\s+", " ", str(texto)).strip()[:2000]
+    if not texto:
+        return 400, {"error": "Seleccioná una parte del resumen."}
+    m = json.loads((d / "materia.json").read_text(encoding="utf-8"))
+    clase = next((c for c in m.get("clases", []) if int(c["n"]) == int(n)), {"n": n})
+    r = d / "resumen" / f"clase{int(n):02d}.md"
+    resumen = r.read_text(encoding="utf-8")[:24000] if r.exists() else "(sin resumen)"
+    historial = [h for h in (historial or []) if isinstance(h, dict)][-4:]
+    prompt = prompt_explicar(m, clase, resumen, texto, str(pregunta or "").strip()[:600], historial)
+    data = parse_json(llamar_modelo(prompt, proveedor or CFG["proveedor"], ESQUEMA_EXPLICAR))
+    return 200, {k: corto(data.get(k), 1500) for k in ("en_una_frase", "explicacion", "ejemplo")}
+
+
 def repaso(slug, n, items, proveedor=None):
     """Resumen personalizado de los errores de una clase, a partir de las preguntas que salieron mal."""
     d = materia_dir(slug)
@@ -506,6 +562,11 @@ class Handler(BaseHTTPRequestHandler):
                 if not materia_dir(slug):
                     return self.enviar(404, {"error": "Materia no encontrada"})
                 code, out = voz(slug, d.get("texto", ""), d.get("voz"))
+                return self.enviar(code, out)
+            if p == "/api/explicar":
+                d = json.loads(cuerpo or b"{}")
+                code, out = explicar(str(d.get("materia")), int(d.get("clase")), d.get("texto", ""),
+                                     d.get("pregunta", ""), d.get("historial"), d.get("proveedor"))
                 return self.enviar(code, out)
             if p == "/api/repaso":
                 d = json.loads(cuerpo or b"{}")

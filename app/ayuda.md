@@ -39,12 +39,25 @@ Cuando tildás los cuatro pasos, la estación se pinta en el mapa.
 
 Si Gemini dice que llegaste al límite, esperá un rato o tocá "Usar la voz del sistema".
 
+### Si no entendés una parte: Explicame
+
+1. Seleccioná con el mouse (o manteniendo apretado en el celular) la parte del resumen que no entendés.
+2. Al lado aparecen dos botones. Tocá **Explicame**.
+3. Se abre un panel con:
+   - **la idea en una frase**, en negrita;
+   - una **explicación** simple, que define cada término técnico;
+   - un **ejemplo** concreto.
+4. Si sigue sin cerrarte, escribí abajo otra pregunta ("¿y en qué se diferencia de…?", "dame otro ejemplo") y tocá **Preguntar**. Recuerda lo que ya te explicó.
+5. **Agregar a mis apuntes** copia la frase central a tus apuntes de la clase.
+
+Explica usando el resumen de la clase. Si agrega algo que no está en el resumen, lo marca con "Fuera del resumen:"; tomalo con cuidado, porque no viene del material de la cátedra. Usa el mismo corrector que configuraste (Gemini u Ollama).
+
 ### Tomar apuntes
 
 A la derecha del resumen, debajo de "Pasos en esta estación", está **Mis apuntes**: un lugar por clase para escribir lo esencial con tus palabras. En el celular es el botón **Mis apuntes** abajo a la derecha.
 
 - Se guarda solo mientras escribís (dice "Guardado").
-- **Seleccioná texto del resumen** y aparece el botón **A mis apuntes**: lo copia como un punto nuevo. Después reescribilo más corto: escribirlo con tus palabras es lo que hace que te quede.
+- **Seleccioná texto del resumen** y tocá **A mis apuntes**: lo copia como un punto nuevo. Después reescribilo más corto: escribirlo con tus palabras es lo que hace que te quede.
 - Si empezás las líneas con `- ` se ven como lista.
 - La pestaña **Mis apuntes** junta los de todas las clases para repasar antes del examen, y con **Descargar todo (.md)** te los llevás en un archivo.
 
