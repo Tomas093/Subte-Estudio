@@ -210,20 +210,41 @@ ESTILO = """ESTILO (obligatorio):
 
 def prompt_correccion(m, q, respuesta):
     claves = q.get("claves") or []
-    lista = "\n".join(f"{k + 1}. {c}" for k, c in enumerate(claves)) or "1. Cubre las ideas centrales de la respuesta de referencia."
+    num_claves = len(claves)
+    lista = "\n".join(f"Punto {k + 1}: {c}" for k, c in enumerate(claves)) or "Punto 1: Cubre las ideas centrales."
     errores = "\n".join(f"- {e}" for e in q.get("errores") or []) or "- (ninguno listado)"
     reglas = m.get("reglas_correccion", "")
-    return f"""Sos corrector de examen de la materia {m.get('titulo', '')}. Verificás contenido contra los puntos clave. No opinás ni das ánimo.
+    return f"""Sos corrector de examen de {m.get('titulo', '')}. Evaluás con criterio técnico y docente si la respuesta del alumno demuestra que comprendió cada uno de los puntos clave.
 
-TAREA:
-1. Para cada PUNTO CLAVE decidí si la respuesta del alumno lo contiene:
-   - "presente": lo dice con sus palabras y sin errores. Un sinónimo correcto cuenta.
-   - "parcial": lo menciona pero incompleto, vago o con una imprecisión.
-   - "ausente": no aparece, o solo aparece una mención genérica que no lo explica.
-   Ante la duda entre dos estados, elegí el más bajo.
-2. "falta": para cada punto parcial o ausente, qué le faltó decir o qué dijo impreciso, en UNA frase de 15 palabras como máximo. Ejemplo: "No dijiste que la cabecera de enlace se reemplaza en cada salto." Para los puntos presentes, "falta" va vacío ("").
-3. "errores": solo afirmaciones del alumno técnicamente incorrectas o que contradicen las reglas de la cátedra o los errores frecuentes listados. Para cada una, "dijiste" (lo que afirmó, en 12 palabras como máximo) y "correcto" (lo correcto, en 15 palabras como máximo). Si no hay errores, devolvé []. No inventes errores; algo que falta no es un error.
-Juzgá el contenido, no la redacción ni la ortografía.
+IMPORTANTE SOBRE LA RESPUESTA:
+- El alumno suele dictar por voz: ignorá repeticiones, titubeos o tropiezos verbales.
+- No busques coincidencias literales de palabras. Evaluá el entendimiento conceptual.
+- Sinónimos técnicos son válidos: decir "hubo un timeout" equivale conceptualmente a "no llegó respuesta a tiempo antes del umbral". Si la idea está, marcala "presente".
+
+INSTRUCCIÓN ESTRICTA PARA "claves":
+Debés evaluar OBLIGATORIAMENTE los {num_claves} puntos clave, en el mismo orden del 1 al {num_claves}.
+El array "claves" en el JSON DEBE tener EXACTAMENTE {num_claves} elementos:
+- El primer elemento debe tener "n": 1 y evaluar el Punto 1.
+- El segundo elemento debe tener "n": 2 y evaluar el Punto 2.
+- Y así sucesivamente hasta n: {num_claves}.
+NO cambies el orden ni omitas ningún punto.
+
+CRITERIOS DE EVALUACIÓN:
+1. PUNTOS CLAVE:
+   - "presente": el alumno comprende la idea central y la expresa correctamente (con sus palabras, ejemplos válidos o lenguaje coloquial).
+   - "parcial": la idea está presente pero falta una distinción conceptual importante o quedó a medias.
+   - "ausente": no se menciona o está conceptualmente equivocada.
+2. "falta": SOLO para puntos "parcial" o "ausente". Escribí una explicación pedagógica clara, lógica y sin contradicciones (de 10 a 25 palabras):
+   - Explicá qué parte faltó y cómo se formula o completa correctamente.
+   - PROHIBIDO generar contradicciones lógicas (como decir "se sabe timeout pero no que no llegó respuesta"). Si el alumno mencionó el concepto con sinónimos, marcalo "presente".
+   - PROHIBIDO usar palabras sueltas sin verbo ni contexto (como "reintento y respuesta perdida"). Escribí siempre una oración completa que enseñe cómo se dice.
+   - Si está "presente", dejá "" (vacío).
+3. "errores": lista de AFIRMACIONES TÉCNICAMENTE FALSAS hechas por el alumno.
+   ATENCIÓN ESTRICTA:
+   - Si el alumno no hizo ninguna afirmación técnicamente falsa, devolvé "errores": [].
+   - NO inventes errores. Paráfrasis, ejemplos válidos o detalles adicionales (como distinguir seguridad y progreso) NO son errores.
+   - Puntos incompletos van en "parcial", NUNCA en "errores".
+   Para cada error real: "dijiste" (lo falso que afirmó, máx 12 palabras) y "correcto" (lo técnicamente correcto, máx 15 palabras).
 
 {ESTILO}
 
@@ -235,7 +256,7 @@ PREGUNTA:
 RESPUESTA DE REFERENCIA (solo como guía):
 {q.get('referencia', '')}
 
-PUNTOS CLAVE:
+PUNTOS CLAVE A EVALUAR:
 {lista}
 
 ERRORES FRECUENTES QUE INVALIDAN:
@@ -673,10 +694,15 @@ def transcribir(audio, tipo):
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(src), "-ar", "16000", "-ac", "1", str(wav)],
                        check=True, timeout=120)
         out = subprocess.run([CFG["whisper_bin"], "-m", CFG["whisper_modelo"], "-l", CFG["whisper_idioma"],
-                              "-nt", "-np", "-f", str(wav)], capture_output=True, text=True, timeout=600)
+                              "-nt", "-np", "-mc", "0", "-f", str(wav)], capture_output=True, text=True, timeout=600)
         if out.returncode != 0:
             return 500, {"error": "whisper falló: " + out.stderr[-300:]}
-        texto = " ".join(l.strip() for l in out.stdout.splitlines() if l.strip())
+        lineas = [l.strip() for l in out.stdout.splitlines() if l.strip()]
+        dedup = []
+        for l in lineas:
+            if not dedup or l != dedup[-1]:
+                dedup.append(l)
+        texto = " ".join(dedup)
         return 200, {"texto": texto}
 
 # ---------------------------------------------------------------- estado
