@@ -49,6 +49,17 @@ Cuando tildás los cuatro pasos, la estación se pinta en el mapa.
 
 Si una voz falla (por ejemplo, Microsoft sin internet o Gemini sin créditos), la barra lo dice y te ofrece probar con otra.
 
+### Sacar del resumen lo que no te sirve
+
+1. Arriba del resumen, tocá **Editar resumen**.
+2. Al lado de cada párrafo, punto de lista y tabla aparece **Quitar**; al lado de cada título, **Quitar sección** (saca el título y todo lo que tiene abajo hasta el próximo título). Pasá el mouse por encima y se tacha en rojo lo que se va a borrar.
+3. Se guarda solo al tocar. Si te equivocaste, **Deshacer**.
+4. **Editar el texto** abre el resumen como texto para cambiar palabras o agregar algo. Es Markdown: `## Título`, `- punto`, `**negrita**`. Tocá **Guardar el texto**.
+5. **Volver al original** deja el resumen como estaba antes de tu primera edición.
+6. **Listo** sale del modo edición.
+
+Si una sección es la que explica alguna pregunta ("Dónde se explica"), te avisa antes de quitarla. El original queda guardado en la carpeta `resumen/originales/` de la materia, y cada versión anterior en `resumen/versiones/` (las últimas 30 por clase).
+
 ### Si no entendés una parte: Explicame
 
 1. Seleccioná con el mouse (o manteniendo apretado en el celular) la parte del resumen que no entendés.

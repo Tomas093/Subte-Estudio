@@ -1,5 +1,7 @@
 /* Markdown mínimo para los resúmenes: encabezados, párrafos, listas anidadas,
-   tablas, negrita, cursiva, código y enlaces. Escapa todo el HTML de entrada. */
+   tablas, negrita, cursiva, código y enlaces. Escapa todo el HTML de entrada.
+   Cada bloque lleva las líneas de origen (data-l="desde-hasta", sin incluir "hasta"; en los ítems
+   de lista, data-l0 con la primera línea) para poder editar el resumen desde la app. */
 (function () {
   const esc = s => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   function inline(s) {
@@ -22,9 +24,9 @@
         const m = listItem(lines[i]);
         if (!m || m[1].length < indent) break;
         if (m[1].length > indent) { html = html.replace(/<\/li>$/, "") + list(m[1].length) + "</li>"; continue; }
-        let text = m[3]; i++;
+        let text = m[3]; const l0 = i; i++;
         while (i < lines.length && lines[i].trim() && !listItem(lines[i]) && /^\s+/.test(lines[i])) { text += " " + lines[i].trim(); i++; }
-        html += "<li>" + inline(text) + "</li>";
+        html += `<li data-l0="${l0}">` + inline(text) + "</li>";
         while (i < lines.length && !lines[i].trim() && listItem(lines[i + 1] || "")) i++;
       }
       return html + (ordered ? "</ol>" : "</ul>");
@@ -33,19 +35,20 @@
       const l = lines[i];
       if (!l.trim()) { i++; continue; }
       const h = l.match(/^(#{1,4})\s+(.*)$/);
-      if (h) { const n = Math.min(4, h[1].length + 1); out += `<h${n}>${inline(h[2])}</h${n}>`; i++; continue; }
+      if (h) { const n = Math.min(4, h[1].length + 1); out += `<h${n} data-l="${i}-${i + 1}" data-nivel="${h[1].length}">${inline(h[2])}</h${n}>`; i++; continue; }
       if (/^\s*([-*]|\d+[.)])\s+/.test(l)) { out += list(l.match(/^\s*/)[0].length); continue; }
       if (/^\|.*\|\s*$/.test(l) && /^\|[\s:|-]+\|\s*$/.test(lines[i + 1] || "")) {
         const row = r => r.trim().replace(/^\||\|$/g, "").split("|").map(c => c.trim());
-        let t = "<table><thead><tr>" + row(l).map(c => `<th>${inline(c)}</th>`).join("") + "</tr></thead><tbody>";
+        const l0 = i;
+        let t = "<thead><tr>" + row(l).map(c => `<th>${inline(c)}</th>`).join("") + "</tr></thead><tbody>";
         i += 2;
         while (i < lines.length && /^\|.*\|\s*$/.test(lines[i])) { t += "<tr>" + row(lines[i]).map(c => `<td>${inline(c)}</td>`).join("") + "</tr>"; i++; }
-        out += t + "</tbody></table>"; continue;
+        out += `<table data-l="${l0}-${i}">` + t + "</tbody></table>"; continue;
       }
       if (/^---+\s*$/.test(l)) { i++; continue; }
-      let p = l.trim(); i++;
+      let p = l.trim(); const l0 = i; i++;
       while (i < lines.length && lines[i].trim() && !/^(#{1,4})\s|^\s*([-*]|\d+[.)])\s+|^\|/.test(lines[i])) { p += " " + lines[i].trim(); i++; }
-      out += "<p>" + inline(p) + "</p>";
+      out += `<p data-l="${l0}-${i}">` + inline(p) + "</p>";
     }
     return out;
   }

@@ -270,6 +270,7 @@ button.donde{background:none;border:0;padding:0;margin-top:8px;color:var(--la-in
 /* lector en voz alta */
 .sec-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .sec-row .sec{flex:1 1 auto}
+.sec-acts{display:flex;gap:8px;flex-wrap:wrap}
 .read .leyendo{background:var(--marca);border-radius:4px;box-shadow:0 0 0 5px var(--marca);transition:background .25s}
 .read.lector-on p,.read.lector-on li,.read.lector-on h3,.read.lector-on h4,.read.lector-on tr{cursor:pointer}
 .lector{position:fixed;left:0;right:0;bottom:0;z-index:50;background:var(--panel);border-top:3px solid var(--sign);box-shadow:0 -6px 24px rgba(0,0,0,.12);padding:10px 0 calc(10px + env(safe-area-inset-bottom))}
@@ -345,3 +346,14 @@ body.con-lector .explica{bottom:110px;max-height:calc(100vh - 126px)}
 .ex-rapidas button:hover:not(:disabled){border-color:var(--ink)}
 .ex-rapidas button:disabled{opacity:.5;cursor:default}
 @media (max-width:980px){.explica{left:0;right:0;bottom:0;width:auto;max-height:75vh;border-radius:14px 14px 0 0;padding-bottom:calc(16px + env(safe-area-inset-bottom))}body.con-lector .explica{bottom:0;max-height:75vh}body.con-explica .notas-fab{display:none}}
+
+/* editar el resumen */
+.ed-bar{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 14px;margin:6px 0 14px;padding:10px 14px;background:var(--panel);border:2px solid var(--ink);border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,.08)}
+.ed-bar p{margin:0;font-size:.92rem}
+.ed-acts{display:flex;gap:8px;flex-wrap:wrap}
+.ed-quitar{margin-left:8px;vertical-align:middle;border:1px solid color-mix(in srgb,var(--bad) 55%,transparent);background:var(--panel);color:var(--bad);border-radius:999px;padding:1px 9px;font:700 .72rem var(--sign-font);cursor:pointer;white-space:nowrap}
+.ed-quitar:hover,.ed-quitar:focus-visible{background:var(--bad);color:#fff}
+table + .ed-quitar{display:block;margin:-6px 0 14px}
+.read.editando :is(p,li,h2,h3,h4,h5):has(> .ed-quitar:hover),.read.editando table:has(+ .ed-quitar:hover){background:var(--bad-soft);border-radius:4px;box-shadow:0 0 0 4px var(--bad-soft);text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--bad) 60%,transparent)}
+.ed-texto{width:100%;min-height:60vh;resize:vertical;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);font:400 .9rem/1.55 ui-monospace,SFMono-Regular,Menlo,monospace}
+.ed-tip{color:var(--muted);font-size:.85rem}
