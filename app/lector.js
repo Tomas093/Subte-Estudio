@@ -208,7 +208,7 @@
     abrirBarra(); play();
   }
   document.addEventListener("click", e => {
-    if (!L || !L.read.contains(e.target) || e.target.closest("a,button")) return;
+    if (!L || !L.read.contains(e.target) || e.target.closest("a,button") || String(getSelection()).trim()) return;
     const el = e.target.closest("h2,h3,h4,h5,p,li,tr"); if (!el) return;
     const j = L.ps.findIndex(p => p.els.includes(el)); if (j >= 0) { L.sonando = true; ir(j); }
   });

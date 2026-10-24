@@ -156,8 +156,8 @@ h3.sec{font:800 1.25rem var(--sign-font);font-stretch:85%;margin:34px 0 10px;tex
 
 /* Horario */
 .timetable{padding:24px clamp(16px,3vw,36px)}
-.timetable h2,.terminal h2,.repaso h2{margin:0 0 6px;font:800 1.7rem var(--sign-font);font-stretch:82%}
-.timetable p.lead,.terminal p.lead,.repaso p.lead{margin:0 0 18px;color:var(--muted);max-width:68ch}
+.timetable h2,.terminal h2,.repaso h2,.apuntes h2,.ayuda h2{margin:0 0 6px;font:800 1.7rem var(--sign-font);font-stretch:82%}
+.timetable p.lead,.terminal p.lead,.repaso p.lead,.apuntes p.lead{margin:0 0 18px;color:var(--muted);max-width:68ch}
 .tt{width:100%;border-collapse:collapse;font-family:var(--sign-font)}
 .tt-wrap{overflow-x:auto}
 .tt th{text-align:left;font:700 .78rem var(--sign-font);color:var(--muted);letter-spacing:.06em;text-transform:uppercase;padding:8px 10px;border-bottom:3px solid var(--sign)}
@@ -174,7 +174,7 @@ h3.sec{font:800 1.25rem var(--sign-font);font-stretch:85%;margin:34px 0 10px;tex
 .tt .sts button.done{border-color:transparent;background:var(--ok-soft)}
 
 /* Terminal y repaso */
-.terminal,.repaso{padding:24px clamp(16px,3vw,36px)}
+.terminal,.repaso,.apuntes,.ayuda{padding:24px clamp(16px,3vw,36px)}
 .board{list-style:none;margin:0 0 28px;padding:0;border-top:3px solid var(--sign)}
 .board li{display:grid;grid-template-columns:150px minmax(0,1fr);gap:16px;padding:14px 0;border-bottom:1px solid var(--line);align-items:baseline}
 .board .k{font:700 .82rem var(--sign-font);color:var(--muted);font-variant-numeric:tabular-nums}
@@ -284,3 +284,32 @@ button.donde{background:none;border:0;padding:0;margin-top:8px;color:var(--la-in
 .lector .l-tip{color:var(--muted);font-weight:500;font-size:.8rem}
 body.con-lector{padding-bottom:120px}
 @media (max-width:560px){.lector .l-tip{display:none}.lector select{max-width:9em}}
+
+/* mis apuntes */
+.rail{max-height:calc(100vh - 32px);overflow:auto}
+.notas{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:14px}
+.notas-head{display:flex;align-items:baseline;gap:10px}
+.notas-head h3{margin:0;font:800 1rem var(--sign-font);font-stretch:85%}
+.notas-ok{font:600 .78rem var(--sign-font);color:var(--ok)}
+.notas textarea{width:100%;min-height:240px;resize:vertical;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);font:400 .95rem/1.5 var(--read-font)}
+.notas textarea:focus{border-color:var(--focus);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--focus) 25%,transparent)}
+.notas textarea.flash{animation:notaflash 1.2s ease-out}
+@keyframes notaflash{0%{background:var(--marca)}100%{background:var(--panel)}}
+.notas-tip{margin:0;color:var(--muted);font-size:.82rem}
+.notas-x,.notas-fab{display:none}
+.agregar-nota{position:absolute;z-index:70;background:var(--ink);color:var(--panel);border:0;border-radius:999px;padding:7px 14px;font:700 .85rem var(--sign-font);cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+.ap-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.ap-clase{border-top:3px solid var(--sign);padding:14px 0 6px}
+.ap-t{display:flex;align-items:center;gap:12px}
+.ap-t h3{flex:1;margin:0;font:800 1.05rem var(--sign-font)}
+.ap-t .roundel{width:34px;height:34px;font-size:.85rem}
+@media (max-width:980px){
+  .rail{max-height:none;overflow:visible}
+  .notas{position:fixed;left:0;right:0;bottom:0;z-index:60;background:var(--panel);padding:14px 16px calc(14px + env(safe-area-inset-bottom));border-top:3px solid var(--sign);box-shadow:0 -6px 24px rgba(0,0,0,.15);transform:translateY(105%);visibility:hidden;transition:transform .25s,visibility .25s}
+  body.notas-abiertas .notas{transform:none;visibility:visible}
+  .notas textarea{min-height:38vh}
+  .notas-x{display:inline-block;margin-left:auto;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;padding:5px 12px;font:700 .82rem var(--sign-font);cursor:pointer}
+  .notas-fab{display:block;position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:55;background:var(--ink);color:var(--panel);border:0;border-radius:999px;padding:11px 18px;font:800 .9rem var(--sign-font);box-shadow:0 6px 18px rgba(0,0,0,.25);cursor:pointer}
+  body.con-lector .notas-fab{bottom:150px}
+  body.notas-abiertas .notas-fab{display:none}
+}
