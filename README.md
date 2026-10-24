@@ -19,7 +19,7 @@ El contenido de cada materia (resúmenes, preguntas, plan) lo arman agentes de C
 - **Editar el resumen:** desde la app, quitás párrafos, puntos, tablas o secciones enteras con un toque, o editás el texto. Hay deshacer, el original queda en `resumen/originales/` y las versiones anteriores en `resumen/versiones/`.
 - **Explicame:** seleccionás una parte del resumen, escribís qué querés saber de ella (o usás una pregunta rápida, o lo dejás vacío) y el modelo te responde simple y con un ejemplo, usando el resumen de la clase como fuente; podés seguir preguntando y guardar la idea en tus apuntes.
 - **Mis apuntes:** al lado de cada resumen, un espacio por clase para escribir lo esencial; seleccionando texto del resumen se agrega con un toque. La pestaña "Mis apuntes" los junta todos y los descarga en Markdown.
-- **Dictado:** grabás tu respuesta con el micrófono y ves en vivo lo que va entendiendo (reconocimiento de voz del navegador). Al terminar, [whisper.cpp](https://github.com/ggml-org/whisper.cpp) la pasa en limpio en tu compu, si está configurado; si no, queda el texto del navegador.
+- **Dictado:** grabás tu respuesta con el micrófono y se va escribiendo en la caja mientras hablás (reconocimiento de voz del navegador). Al terminar, [whisper.cpp](https://github.com/ggml-org/whisper.cpp) la pasa en limpio en tu compu, si está configurado; si no, queda el texto del navegador.
 - **Horario:** plan por días hasta el examen.
 - **Terminal:** material general, examen modelo y la guía de cómo responder.
 - **Para repasar (repaso espaciado):** cada pregunta mal o a medias vuelve en 1 hora, después al día siguiente, a los 3 días y a la semana. Si fallás, vuelve a empezar.
