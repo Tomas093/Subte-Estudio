@@ -524,11 +524,12 @@ def repaso(slug, n, items, proveedor=None):
     return 200, {"diagnostico": corto(data.get("diagnostico"), 400), "temas": temas[:5], "firmes": firmes[:4]}
 
 # ---------------------------------------------------------------- lectura en voz alta
-# Tres motores generan el audio en el servidor:
+# Cuatro motores generan el audio en el servidor:
 #   gemini     la más natural; usa GEMINI_API_KEY y gasta créditos.
 #   microsoft  voces neuronales de Microsoft vía edge-tts; gratis, sin clave, necesita internet.
+#   kokoro     voz local natural; gratis, sin internet y rápida (modelo de unos 350 MB).
 #   piper      voz local; gratis y sin internet. La calidad es un poco menor.
-# microsoft y piper se instalan con scripts/instalar_voces.sh (en .venv-voces/ y voces/).
+# microsoft, kokoro y piper se instalan con scripts/instalar_voces.sh (en .venv-voces/ y voces/).
 # Cada fragmento se genera una vez y queda en cache/voz/<materia>/; volver a escucharlo no cuesta.
 # Un "lote" genera en segundo plano todos los fragmentos de una clase, de a varios a la vez.
 
@@ -538,6 +539,7 @@ VOCES_GEMINI = ["Kore", "Charon", "Aoede", "Puck", "Leda", "Zephyr", "Orus", "Fe
 VOCES_MS = {"es-AR-ElenaNeural": "Elena (Argentina)", "es-AR-TomasNeural": "Tomás (Argentina)",
             "es-MX-DaliaNeural": "Dalia (México)", "es-MX-JorgeNeural": "Jorge (México)",
             "es-ES-ElviraNeural": "Elvira (España)", "es-ES-AlvaroNeural": "Álvaro (España)"}
+VOCES_KOKORO = {"ef_dora": "Dora (mujer)", "em_alex": "Alex (hombre)", "em_santa": "Santa (hombre)"}
 TTS_MODELOS_ALTERNATIVOS = ["gemini-2.5-flash-preview-tts", "gemini-3.1-flash-tts-preview"]
 VOZ_LOCK = threading.Lock()
 VOZ_EN_CURSO = {}   # clave -> Event: evita generar dos veces el mismo fragmento
@@ -559,12 +561,42 @@ def voces_piper():
     return sorted(f.name[:-5] for f in VOCES_DIR.glob("*.onnx") if (VOCES_DIR / (f.name + ".json")).exists())
 
 
+def kokoro_instalado():
+    return (VENV_VOCES / "bin" / "python").exists() and (VOCES_DIR / "kokoro" / "kokoro-v1.0.onnx").exists() \
+        and (VOCES_DIR / "kokoro" / "voices-v1.0.bin").exists()
+
+
+KOKORO = {"proc": None, "lock": threading.Lock()}
+
+
+def sintetizar_kokoro(texto, nombre, wav):
+    """Le pasa el texto al proceso de Kokoro (se lanza la primera vez y queda cargado)."""
+    with KOKORO["lock"]:
+        p = KOKORO["proc"]
+        if p is None or p.poll() is not None:
+            p = KOKORO["proc"] = subprocess.Popen(
+                [str(VENV_VOCES / "bin" / "python"), "-I", str(ROOT / "scripts" / "kokoro_worker.py")],
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
+        try:
+            p.stdin.write(json.dumps({"texto": texto, "voz": nombre, "salida": str(wav)}) + "\n")
+            p.stdin.flush()
+            r = p.stdout.readline().strip()
+        except OSError:
+            r = ""
+    if r != "ok":
+        KOKORO["proc"] = None
+        raise RuntimeError("Kokoro no pudo generar la voz: " + (r[7:] if r.startswith("error:") else "no arrancó (corré scripts/instalar_voces.sh)"))
+
+
 def motores_voz():
     """Motores disponibles en esta compu, con sus voces y la voz por defecto."""
     out = {}
     if herramienta("edge-tts"):
         out["microsoft"] = {"nombre": "Voz de Microsoft (gratis)", "voces": [{"id": k, "nombre": v} for k, v in VOCES_MS.items()],
                             "def": CFG["ms_voz"] if CFG["ms_voz"] in VOCES_MS else "es-AR-ElenaNeural"}
+    if kokoro_instalado():
+        out["kokoro"] = {"nombre": "Voz local Kokoro (gratis, sin internet)", "voces": [{"id": k, "nombre": v} for k, v in VOCES_KOKORO.items()],
+                         "def": "ef_dora"}
     pv = voces_piper()
     if pv and herramienta("piper"):
         out["piper"] = {"nombre": "Voz local Piper (gratis, sin internet)", "voces": [{"id": v, "nombre": v} for v in pv],
@@ -645,7 +677,9 @@ def sintetizar(slug, texto, motor, nombre, clave):
         os.replace(mp3, d / (clave + ".mp3"))
         return f"/cache/voz/{slug}/{clave}.mp3"
     wav = d / (clave + ".tmp.wav")
-    if motor == "piper":
+    if motor == "kokoro":
+        sintetizar_kokoro(texto, nombre, wav)
+    elif motor == "piper":
         correr([herramienta("piper"), "-m", str(VOCES_DIR / (nombre + ".onnx")), "-f", str(wav)], "Piper",
                input=texto.encode("utf-8"))
     else:
