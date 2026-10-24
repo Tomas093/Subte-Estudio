@@ -207,10 +207,15 @@ details.howto summary{cursor:pointer;font:800 1.15rem var(--sign-font)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 
 /* Agregados del motor: dictado, puntos clave, estado del corrector */
-.btn.rec{display:inline-flex;align-items:center;gap:8px}
-.btn.rec .dot{width:10px;height:10px;border-radius:50%;background:var(--bad)}
-.btn.rec[aria-pressed="true"]{background:var(--bad-soft);border-color:var(--bad);color:var(--bad)}
-.btn.rec[aria-pressed="true"] .dot{animation:pulse 1s ease-in-out infinite}
+.mic{position:relative;flex:none;width:38px;height:38px;display:inline-grid;place-items:center;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:50%;cursor:pointer;padding:0}
+.mic:hover:not(:disabled){border-color:var(--ink)}
+.mic:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.mic[data-estado="grabando"]{background:var(--bad);border-color:var(--bad);color:#fff}
+.mic[data-estado="grabando"]::after{content:"";position:absolute;inset:-5px;border-radius:50%;border:2px solid var(--bad);animation:latido 1.2s ease-out infinite}
+.mic[data-estado="transcribiendo"]{cursor:progress}
+.mic[data-estado="transcribiendo"]::after{content:"";width:16px;height:16px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--ink);animation:gira .8s linear infinite}
+@keyframes latido{0%{transform:scale(.9);opacity:.9}100%{transform:scale(1.35);opacity:0}}
+@keyframes gira{to{transform:rotate(360deg)}}
 @keyframes pulse{50%{opacity:.25}}
 .claves{list-style:none;margin:6px 0 8px;padding:0;display:flex;flex-direction:column;gap:6px}
 .claves li{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;font-size:.95rem}
@@ -357,3 +362,4 @@ table + .ed-quitar{display:block;margin:-6px 0 14px}
 .read.editando :is(p,li,h2,h3,h4,h5):has(> .ed-quitar:hover),.read.editando table:has(+ .ed-quitar:hover){background:var(--bad-soft);border-radius:4px;box-shadow:0 0 0 4px var(--bad-soft);text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--bad) 60%,transparent)}
 .ed-texto{width:100%;min-height:60vh;resize:vertical;padding:12px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--ink);font:400 .9rem/1.55 ui-monospace,SFMono-Regular,Menlo,monospace}
 .ed-tip{color:var(--muted);font-size:.85rem}
+@media (prefers-reduced-motion:reduce){.mic[data-estado="grabando"]::after{animation:none;opacity:.6;transform:scale(1.15)}}

@@ -41,6 +41,8 @@
   const ICON = {
     video: '<svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><rect x="1.5" y="3.5" width="17" height="13" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 7.2v5.6l4.6-2.8z" fill="currentColor"/></svg>',
     audio: '<svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 11v-1a6 6 0 0 1 12 0v1" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="2.5" y="10.5" width="4" height="6" rx="1.5" fill="currentColor"/><rect x="13.5" y="10.5" width="4" height="6" rx="1.5" fill="currentColor"/></svg>',
+    mic: '<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="2.5" width="7" height="12" rx="3.5" fill="none" stroke="currentColor" stroke-width="1.9"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3.5M8.5 21.5h7" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>',
+    stop: '<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="2" fill="currentColor"/></svg>',
     check: '<svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M7 13.5l4 4 8-9" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
   };
 
@@ -188,7 +190,7 @@
     <div class="q-body">
       <textarea id="ta-${k}" data-draft="${k}" aria-label="Tu respuesta a la pregunta ${i + 1}" placeholder="Tu respuesta… (o dictala)">${esc(draft)}</textarea>
       <div class="q-actions">
-        <button class="btn rec" data-rec="${k}" aria-pressed="false" ${ST.transcripcion ? "" : "hidden"}><span class="dot" aria-hidden="true"></span><span>Dictar</span></button>
+        <button class="mic" data-rec="${k}" aria-pressed="false" aria-label="Dictar tu respuesta" title="Dictar tu respuesta" ${ST.transcripcion ? "" : "hidden"}>${ICON.mic}</button>
         <button class="btn primary" data-grade="${k}" ${ST.corrector ? "" : "hidden"}>Corregir</button>
         <button class="btn" data-ref="${k}" aria-expanded="false" ${words(draft) < 8 && !S["u-" + k] ? "disabled" : ""}>Ver respuesta de referencia</button>
         <button class="btn ghost" data-dunno="${k}">No la sé</button>
@@ -302,6 +304,12 @@
 
   /* ---------- dictado ---------- */
   let rec = null;
+  function micEstado(btn, estado) {
+    const L = { "": "Dictar tu respuesta", grabando: "Detener el dictado", transcribiendo: "Transcribiendo tu respuesta…" }[estado];
+    btn.dataset.estado = estado; btn.setAttribute("aria-pressed", String(estado === "grabando"));
+    btn.setAttribute("aria-label", L); btn.title = L; btn.disabled = estado === "transcribiendo";
+    btn.innerHTML = estado === "grabando" ? ICON.stop : estado === "transcribiendo" ? "" : ICON.mic;
+  }
   async function toggleRec(k, btn) {
     if (rec && rec.k === k) { rec.mr.stop(); return; }
     if (rec) return;
@@ -310,11 +318,11 @@
     catch (e) { $("out-" + k).innerHTML = `<p class="thinking">No pude usar el micrófono. Revisá el permiso del navegador.</p>`; return; }
     const mr = new MediaRecorder(stream), chunks = [];
     rec = { k, mr };
-    btn.setAttribute("aria-pressed", "true"); btn.lastElementChild.textContent = "Detener";
+    micEstado(btn, "grabando");
     mr.ondataavailable = e => e.data.size && chunks.push(e.data);
     mr.onstop = async () => {
       stream.getTracks().forEach(t => t.stop()); rec = null;
-      btn.setAttribute("aria-pressed", "false"); btn.lastElementChild.textContent = "Transcribiendo…"; btn.disabled = true;
+      micEstado(btn, "transcribiendo");
       try {
         const blob = new Blob(chunks, { type: mr.mimeType || "audio/webm" });
         const r = await fetch("/api/transcribir", { method: "POST", headers: { "Content-Type": blob.type }, body: blob });
@@ -322,7 +330,7 @@
         const ta = $("ta-" + k); ta.value = (ta.value.trim() ? ta.value.trim() + " " : "") + d.texto.trim();
         ta.dispatchEvent(new Event("input", { bubbles: true }));
       } catch (e) { $("out-" + k).innerHTML = `<p class="thinking">${esc(e.message)}</p>`; }
-      finally { btn.disabled = false; btn.lastElementChild.textContent = "Dictar"; }
+      finally { micEstado(btn, ""); }
     };
     mr.start();
   }
