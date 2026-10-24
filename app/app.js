@@ -138,6 +138,7 @@
   /* ---------- estación ---------- */
   function station() {
     if (window.Lector) Lector.parar();
+    if (EX && +EX.n !== +current()) { EX = null; pintarEx(); }
     document.body.classList.remove("notas-abiertas");
     const c = byN(current()), f = fase(c), ids = stepIds(c);
     const qs = (c.preguntas || []).map((q, i) => question(c, q, i)).join("");
@@ -382,9 +383,11 @@
     if (accion === "bajar") bajarApuntes();
     if (accion === "editar") { open(n, "nota-" + n); notas("abrir"); }
   }
-  /* Seleccionar texto del resumen muestra "A mis apuntes" al lado de la selección. */
-  const btnNota = document.createElement("button");
-  btnNota.className = "agregar-nota"; btnNota.textContent = "A mis apuntes"; btnNota.hidden = true; document.body.appendChild(btnNota);
+  /* Seleccionar texto del resumen muestra "Explicame" y "A mis apuntes" al lado de la selección. */
+  const selBar = document.createElement("div");
+  selBar.className = "sel-bar"; selBar.hidden = true;
+  selBar.innerHTML = `<button data-sel="explicar">Explicame</button><button data-sel="nota">A mis apuntes</button>`;
+  document.body.appendChild(selBar);
   const seleccionResumen = () => {
     const sel = getSelection(); if (!sel.rangeCount || sel.isCollapsed) return null;
     const r = sel.getRangeAt(0), box = document.querySelector("#view-ruta .read");
@@ -394,22 +397,73 @@
   document.addEventListener("selectionchange", () => {
     clearTimeout(selT);
     selT = setTimeout(() => {
-      const r = seleccionResumen(); if (!r) { btnNota.hidden = true; return; }
+      const r = seleccionResumen(); if (!r) { selBar.hidden = true; return; }
+      selBar.querySelector('[data-sel="explicar"]').hidden = !ST.corrector;
       const b = r.getBoundingClientRect();
-      btnNota.style.top = (b.bottom + scrollY + 8) + "px";
-      btnNota.style.left = Math.max(8, Math.min(innerWidth - 150, b.left + scrollX)) + "px";
-      btnNota.hidden = false;
+      selBar.style.top = (b.bottom + scrollY + 8) + "px";
+      selBar.style.left = Math.max(8, Math.min(innerWidth - 250, b.left + scrollX)) + "px";
+      selBar.hidden = false;
     }, 120);
   });
-  btnNota.addEventListener("mousedown", e => e.preventDefault());  // no perder la selección
-  btnNota.addEventListener("click", () => {
-    const sel = getSelection(), txt = sel.toString().replace(/\s+/g, " ").trim(), ta = document.querySelector("[data-nota]");
-    if (!txt || !ta) return;
-    const v = ta.value; ta.value = (v && !v.endsWith("\n") ? v + "\n" : v) + "- " + txt + "\n";
+  selBar.addEventListener("mousedown", e => e.preventDefault());  // no perder la selección
+  function agregarNota(linea) {
+    const ta = document.querySelector("[data-nota]"); if (!ta || !linea) return;
+    const v = ta.value; ta.value = (v && !v.endsWith("\n") ? v + "\n" : v) + "- " + linea + "\n";
     ta.dispatchEvent(new Event("input", { bubbles: true }));
-    ta.scrollTop = ta.scrollHeight; sel.removeAllRanges(); btnNota.hidden = true;
+    ta.scrollTop = ta.scrollHeight;
     ta.classList.remove("flash"); void ta.offsetWidth; ta.classList.add("flash");
     const ok = $("notasOk"); if (ok) ok.textContent = "Agregado";
+  }
+  selBar.addEventListener("click", e => {
+    const b = e.target.closest("[data-sel]"); if (!b) return;
+    const sel = getSelection(), txt = sel.toString().replace(/\s+/g, " ").trim();
+    sel.removeAllRanges(); selBar.hidden = true;
+    if (b.dataset.sel === "nota") agregarNota(txt);
+    else explicar(txt);
+  });
+
+  /* ---------- explicame ---------- */
+  let EX = null;  // { n, texto, hist: [{p, r, data}] }
+  const exPanel = document.createElement("aside");
+  exPanel.className = "explica"; exPanel.hidden = true; exPanel.setAttribute("aria-label", "Explicación");
+  document.body.appendChild(exPanel);
+  function pintarEx() {
+    if (!EX) { exPanel.hidden = true; document.body.classList.remove("con-explica"); return; }
+    const corto = EX.texto.length > 220 ? EX.texto.slice(0, 220) + "…" : EX.texto;
+    const bloque = (h, k) => {
+      if (h.error) return `<p class="thinking">${esc(h.error)}</p>`;
+      if (!h.data) return `<p class="thinking">Pensando…</p>`;
+      const d = h.data;
+      return `<p class="ex-frase">${esc(d.en_una_frase)}</p>${d.explicacion ? `<div class="ex-txt">${md(d.explicacion)}</div>` : ""}${d.ejemplo ? `<p class="ex-ej"><b>Ejemplo.</b> ${esc(d.ejemplo)}</p>` : ""}<button class="lk" data-ex="nota" data-k="${k}">Agregar a mis apuntes</button>`;
+    };
+    exPanel.innerHTML = `<div class="ex-head"><h3>Explicame</h3><button class="ex-x" data-ex="cerrar">Cerrar</button></div>
+      <blockquote>${esc(corto)}</blockquote>
+      <div class="ex-body">${EX.hist.map((h, k) => (h.p ? `<p class="ex-q">${esc(h.p)}</p>` : "") + bloque(h, k)).join("")}</div>
+      <form class="ex-form"><input type="text" placeholder="Preguntá algo más sobre esto…" aria-label="Otra pregunta sobre el fragmento" ${EX.hist.some(h => !h.data && !h.error) ? "disabled" : ""}><button class="btn" type="submit">Preguntar</button></form>`;
+    exPanel.hidden = false; document.body.classList.add("con-explica");
+    const body = exPanel.querySelector(".ex-body"); body.scrollTop = body.scrollHeight;
+  }
+  async function explicar(texto, pregunta) {
+    if (!texto) return;
+    if (!pregunta) EX = { n: current(), texto, hist: [] };
+    const h = { p: pregunta || "", data: null }; EX.hist.push(h); pintarEx();
+    const yo = EX;
+    try {
+      const historial = EX.hist.filter(x => x.data).map(x => ({ p: x.p || "(explicación inicial)", r: x.data.en_una_frase + " " + x.data.explicacion }));
+      const r = await fetch("/api/explicar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ materia: M.slug, clase: EX.n, texto: EX.texto, pregunta: pregunta || "", historial }) });
+      const d = await r.json(); if (!r.ok) throw new Error(d.error || "No se pudo explicar.");
+      h.data = d;
+    } catch (e) { h.error = e.message; }
+    if (EX === yo) pintarEx();
+  }
+  exPanel.addEventListener("click", e => {
+    const b = e.target.closest("[data-ex]"); if (!b) return;
+    if (b.dataset.ex === "cerrar") { EX = null; pintarEx(); }
+    if (b.dataset.ex === "nota") { const d = EX.hist[+b.dataset.k].data; agregarNota(d.en_una_frase); b.textContent = "Agregado a tus apuntes"; b.disabled = true; }
+  });
+  exPanel.addEventListener("submit", e => {
+    e.preventDefault(); const i = exPanel.querySelector("input"), q = i.value.trim();
+    if (q && EX) explicar(EX.texto, q);
   });
 
   async function ayuda() {
